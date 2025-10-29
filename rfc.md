@@ -144,7 +144,7 @@ sequenceDiagram
  participant Source as Source Stream
  participant Consumer
  participant Processor as Workflow Processor
- participant WStream as Workflow Stream<br/>(Inbox & Outbox)
+ participant WStream as Workflow Stream<br/>(Inbox & Outbox)read
  participant Output as Output Handler
 
  Source->>Consumer: GuestCheckedOut event

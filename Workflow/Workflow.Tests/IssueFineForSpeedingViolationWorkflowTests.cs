@@ -2,7 +2,7 @@
 
 namespace Workflow.Tests;
 
-public class WorkflowTests
+public class IssueFineForSpeedingViolationWorkflowTests
 {
     [Fact]
     public void Check_ParkingViolation_Is_Starting_From_Initial_State()

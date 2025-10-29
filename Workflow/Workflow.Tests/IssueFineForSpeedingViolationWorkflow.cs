@@ -23,8 +23,8 @@ public class IssueFineForSpeedingViolationWorkflow : Workflow<InputMessage, Stat
             (AwaitingManualIdentificationCode, Received<InputMessage, OutputMessage> e) when e.Message is TrafficFineManualIdentificationCodeGenerated =>
                 new Final(),
 
-            // Delegate generic events to base class
-            _ => base.Evolve(state, workflowEvent)
+            // Unhandled events - return state unchanged
+            _ => state
         };
     }
 

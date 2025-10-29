@@ -1,0 +1,22 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Workflow", "Workflow\Workflow.csproj", "{F302ECD8-B331-4D90-A68C-244A9602B20A}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Workflow.Tests", "Workflow.Tests\Workflow.Tests.csproj", "{5FEDE652-5457-4582-B9BE-DD3C4E8705FE}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{F302ECD8-B331-4D90-A68C-244A9602B20A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F302ECD8-B331-4D90-A68C-244A9602B20A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F302ECD8-B331-4D90-A68C-244A9602B20A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F302ECD8-B331-4D90-A68C-244A9602B20A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5FEDE652-5457-4582-B9BE-DD3C4E8705FE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5FEDE652-5457-4582-B9BE-DD3C4E8705FE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5FEDE652-5457-4582-B9BE-DD3C4E8705FE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5FEDE652-5457-4582-B9BE-DD3C4E8705FE}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal

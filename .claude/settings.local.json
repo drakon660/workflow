@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:gist.github.com)",
+      "Bash(dotnet build:*)",
+      "Bash(dotnet test:*)",
+      "WebSearch",
+      "WebFetch(domain:ismaelcelis.com)",
+      "WebFetch(domain:delta-base.com)",
+      "WebFetch(domain:thinkbeforecoding.com)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

@@ -1,3 +1,5 @@
+using System.Collections.Immutable;
+
 namespace Workflow.Tests;
 
 public class GroupCheckoutWorkflow : Workflow<GroupCheckoutInputMessage, GroupCheckoutState, GroupCheckoutOutputMessage>
@@ -10,13 +12,13 @@ public class GroupCheckoutWorkflow : Workflow<GroupCheckoutInputMessage, GroupCh
         {
             // Workflow initiated
             (NotExisting, InitiatedBy<GroupCheckoutInputMessage, GroupCheckoutOutputMessage> { Message: InitiateGroupCheckout m }) =>
-                new Pending(m.GroupCheckoutId, m.GuestStayAccountIds.ToDictionary(id => id, _ => GuestStayStatus.Pending)),
+                new Pending(m.GroupCheckoutId, m.Guests),
 
             // Guest checkout completed - update status and transition to Finished if all done
             (Pending p, Received<GroupCheckoutInputMessage, GroupCheckoutOutputMessage> { Message: GuestCheckedOut m }) =>
-                UpdateGuestAndCheckCompletion(p, m.GuestStayAccountId, GuestStayStatus.Completed),
-
-            // Guest checkout failed - update status and transition to Finished if all done
+               UpdateGuestAndCheckCompletion(p, m.GuestStayAccountId, GuestStayStatus.Completed),
+            
+            // // Guest checkout failed - update status and transition to Finished if all done
             (Pending p, Received<GroupCheckoutInputMessage, GroupCheckoutOutputMessage> { Message: GuestCheckoutFailed m }) =>
                 UpdateGuestAndCheckCompletion(p, m.GuestStayAccountId, GuestStayStatus.Failed),
 
@@ -25,103 +27,96 @@ public class GroupCheckoutWorkflow : Workflow<GroupCheckoutInputMessage, GroupCh
                 new Finished(),
 
             // Unhandled events - return state unchanged
-            _ => state
+            _ => throw new InvalidOperationException($"{workflowEvent} not supported by {state}")
         };
     }
 
+    private IReadOnlyList<WorkflowCommand<GroupCheckoutOutputMessage>> GenerateCheckoutCommands(IReadOnlyList<Guest> guests)
+    {
+        return guests.Select(x => Send(new CheckOut(x.Id))).ToList();
+    }
+    
+    private static List<WorkflowCommand<GroupCheckoutOutputMessage>> EmptyCommands => []; 
+    
     public override IReadOnlyList<WorkflowCommand<GroupCheckoutOutputMessage>> Decide(GroupCheckoutInputMessage input, GroupCheckoutState state)
     {
         return (input, state) switch
         {
             // Initiate group checkout - send checkout commands for all guests
-            (InitiateGroupCheckout m, NotExisting) =>
-                m.GuestStayAccountIds
-                    .Select(guestId => new Send<GroupCheckoutOutputMessage>(new CheckOut(guestId)) as WorkflowCommand<GroupCheckoutOutputMessage>)
-                    .ToList(),
+            (InitiateGroupCheckout m, NotExisting) => GenerateCheckoutCommands(m.Guests),
 
             // Guest checked out - check if all will be completed after this message
-            (GuestCheckedOut m, Pending p) =>
-                WillBeCompleteAfterProcessing(p, m.GuestStayAccountId, GuestStayStatus.Completed)
-                    ? CreateCompletionCommands(p, m.GuestStayAccountId, GuestStayStatus.Completed)
-                    : new List<WorkflowCommand<GroupCheckoutOutputMessage>>(),
+           (GuestCheckedOut m, Pending p) => 
+                 WillBeCompleteAfterProcessing(p, m.GuestStayAccountId, GuestStayStatus.Completed)
+                     ? CreateCompletionCommands(p, m.GuestStayAccountId, GuestStayStatus.Completed)
+                     : EmptyCommands,
+            
+             // Guest checkout failed - check if all will be completed after this message
+             (GuestCheckoutFailed m, Pending p) =>  
+                 WillBeCompleteAfterProcessing(p, m.GuestStayAccountId, GuestStayStatus.Failed)
+                     ? CreateCompletionCommands(p, m.GuestStayAccountId, GuestStayStatus.Failed)
+                     : EmptyCommands,
+            
+             // Timeout - mark as timed out
+             (TimeoutGroupCheckout m, Pending p) =>
+                 [
+                     Send(new GroupCheckoutTimedOut(m.GroupCheckoutId, GetPendingGuests(p))),
+                     Complete()
+                 ],
 
-            // Guest checkout failed - check if all will be completed after this message
-            (GuestCheckoutFailed m, Pending p) =>
-                WillBeCompleteAfterProcessing(p, m.GuestStayAccountId, GuestStayStatus.Failed)
-                    ? CreateCompletionCommands(p, m.GuestStayAccountId, GuestStayStatus.Failed)
-                    : new List<WorkflowCommand<GroupCheckoutOutputMessage>>(),
-
-            // Timeout - mark as timed out
-            (TimeoutGroupCheckout m, Pending p) =>
-                new List<WorkflowCommand<GroupCheckoutOutputMessage>>
-                {
-                    new Send<GroupCheckoutOutputMessage>(new GroupCheckoutTimedOut(m.GroupCheckoutId, GetPendingGuests(p))),
-                    new Complete<GroupCheckoutOutputMessage>()
-                },
-
-            _ => new List<WorkflowCommand<GroupCheckoutOutputMessage>>()
+            _ => EmptyCommands
         };
     }
 
-    private static GroupCheckoutState UpdateGuestAndCheckCompletion(Pending state, string guestId, GuestStayStatus newStatus)
+    private GroupCheckoutState UpdateGuestAndCheckCompletion(Pending state, string guestId, GuestStayStatus newStatus)
     {
-        var updatedStatuses = UpdateGuestStatus(state.GuestStayAccountStatuses, guestId, newStatus);
+        // Create new list with updated guest (immutable)
+        var updatedGuests = state.Guests.Select(guest =>
+            guest.Id == guestId
+                ? guest with { GuestStayStatus = newStatus }
+                : guest
+        ).ToList();
 
         // Check if all guests are now processed
-        var allProcessed = updatedStatuses.Values.All(status =>
-            status == GuestStayStatus.Completed || status == GuestStayStatus.Failed);
+        var allProcessed = updatedGuests.All(x =>
+            x.GuestStayStatus is GuestStayStatus.Completed or GuestStayStatus.Failed);
 
         return allProcessed
             ? new Finished()
-            : state with { GuestStayAccountStatuses = updatedStatuses };
+            : state with { Guests = updatedGuests };
     }
 
-    private static Dictionary<string, GuestStayStatus> UpdateGuestStatus(
-        Dictionary<string, GuestStayStatus> statuses,
-        string guestId,
-        GuestStayStatus newStatus)
-    {
-        var updated = new Dictionary<string, GuestStayStatus>(statuses);
-        if (updated.ContainsKey(guestId))
-        {
-            updated[guestId] = newStatus;
-        }
-        return updated;
-    }
-
-    private static bool WillBeCompleteAfterProcessing(Pending state, string guestId, GuestStayStatus newStatus)
+    private bool WillBeCompleteAfterProcessing(Pending state, string guestId, GuestStayStatus newStatus)
     {
         // Check if all guests will be processed after applying this update
-        return state.GuestStayAccountStatuses.All(kvp =>
+        return state.Guests.All(kvp =>
         {
-            if (kvp.Key == guestId)
+            if (kvp.Id == guestId)
             {
                 // This is the guest being updated - check the new status
-                return newStatus == GuestStayStatus.Completed || newStatus == GuestStayStatus.Failed;
+                return newStatus is GuestStayStatus.Completed or GuestStayStatus.Failed;
             }
-            else
-            {
-                // Other guests - check their current status
-                return kvp.Value == GuestStayStatus.Completed || kvp.Value == GuestStayStatus.Failed;
-            }
+
+            // Other guests - check their current status
+            return kvp.GuestStayStatus is GuestStayStatus.Completed or GuestStayStatus.Failed;
         });
     }
 
-    private static List<WorkflowCommand<GroupCheckoutOutputMessage>> CreateCompletionCommands(Pending state, string currentGuestId, GuestStayStatus currentGuestStatus)
+    private List<WorkflowCommand<GroupCheckoutOutputMessage>> CreateCompletionCommands(Pending state, string currentGuestId, GuestStayStatus currentGuestStatus)
     {
         // Build lists accounting for the current guest's status update
-        var completedGuests = state.GuestStayAccountStatuses
-            .Where(kvp => kvp.Key == currentGuestId
+        var completedGuests = state.Guests
+            .Where(kvp => kvp.Id == currentGuestId
                 ? currentGuestStatus == GuestStayStatus.Completed
-                : kvp.Value == GuestStayStatus.Completed)
-            .Select(kvp => kvp.Key)
+                : kvp.GuestStayStatus == GuestStayStatus.Completed)
+            .Select(kvp => kvp.Id)
             .ToList();
 
-        var failedGuests = state.GuestStayAccountStatuses
-            .Where(kvp => kvp.Key == currentGuestId
+        var failedGuests = state.Guests
+            .Where(kvp => kvp.Id == currentGuestId
                 ? currentGuestStatus == GuestStayStatus.Failed
-                : kvp.Value == GuestStayStatus.Failed)
-            .Select(kvp => kvp.Key)
+                : kvp.GuestStayStatus == GuestStayStatus.Failed)
+            .Select(kvp => kvp.Id)
             .ToList();
 
         var hasFailures = failedGuests.Any();
@@ -130,26 +125,28 @@ public class GroupCheckoutWorkflow : Workflow<GroupCheckoutInputMessage, GroupCh
             ? new GroupCheckoutFailed(state.GroupCheckoutId, completedGuests, failedGuests)
             : new GroupCheckoutCompleted(state.GroupCheckoutId, completedGuests);
 
-        return new List<WorkflowCommand<GroupCheckoutOutputMessage>>
-        {
-            new Send<GroupCheckoutOutputMessage>(outputEvent),
-            new Complete<GroupCheckoutOutputMessage>()
-        };
+        return
+        [
+            Send(outputEvent),
+            Complete()
+        ];
     }
-
-    private static List<string> GetPendingGuests(Pending state)
+    
+    private List<string> GetPendingGuests(Pending state)
     {
-        return state.GuestStayAccountStatuses
-            .Where(kvp => kvp.Value == GuestStayStatus.Pending)
-            .Select(kvp => kvp.Key)
+        return state.Guests
+            .Where(kvp => kvp.GuestStayStatus == GuestStayStatus.Pending)
+            .Select(kvp => kvp.Id)
             .ToList();
     }
 }
 
+public record Guest(string Id, GuestStayStatus GuestStayStatus = GuestStayStatus.Pending);
+
 // State types
 public abstract record GroupCheckoutState;
 public record NotExisting : GroupCheckoutState;
-public record Pending(string GroupCheckoutId, Dictionary<string, GuestStayStatus> GuestStayAccountStatuses) : GroupCheckoutState;
+public record Pending(string GroupCheckoutId, IReadOnlyList<Guest> Guests) : GroupCheckoutState;
 public record Finished : GroupCheckoutState;
 
 public enum GuestStayStatus
@@ -161,7 +158,7 @@ public enum GuestStayStatus
 
 // Input message types
 public abstract record GroupCheckoutInputMessage;
-public record InitiateGroupCheckout(string GroupCheckoutId, List<string> GuestStayAccountIds) : GroupCheckoutInputMessage;
+public record InitiateGroupCheckout(string GroupCheckoutId, IReadOnlyList<Guest> Guests) : GroupCheckoutInputMessage;
 public record GuestCheckedOut(string GuestStayAccountId) : GroupCheckoutInputMessage;
 public record GuestCheckoutFailed(string GuestStayAccountId, string Reason) : GroupCheckoutInputMessage;
 public record TimeoutGroupCheckout(string GroupCheckoutId) : GroupCheckoutInputMessage;

@@ -3,7 +3,7 @@
 public abstract class Workflow<TInput, TState, TOutput> : IWorkflow<TInput, TState, TOutput>
 {
     public abstract TState InitialState { get; }
-
+    
     public TState Evolve(TState state, WorkflowEvent<TInput, TOutput> workflowEvent)
     {
         // Handle generic events that don't change state (common to all workflows)
@@ -26,7 +26,24 @@ public abstract class Workflow<TInput, TState, TOutput> : IWorkflow<TInput, TSta
 
     public abstract IReadOnlyList<WorkflowCommand<TOutput>> Decide(TInput input, TState state);
 
-    public IReadOnlyList<WorkflowEvent<TInput, TOutput>> Translate(
+    // Helper methods for creating workflow events (shortcuts to avoid verbose constructors)
+    protected Began<TInput, TOutput> Began() => new();
+    protected InitiatedBy<TInput, TOutput> InitiatedBy(TInput message) => new(message);
+    protected Received<TInput, TOutput> Received(TInput message) => new(message);
+    protected Replied<TInput, TOutput> Replied(TOutput message) => new(message);
+    protected Sent<TInput, TOutput> Sent(TOutput message) => new(message);
+    protected Published<TInput, TOutput> Published(TOutput message) => new(message);
+    protected Scheduled<TInput, TOutput> Scheduled(TimeSpan after, TOutput message) => new(after, message);
+    protected Completed<TInput, TOutput> Completed() => new();
+
+    // Helper methods for creating workflow commands (shortcuts to avoid verbose constructors)
+    protected Reply<TOutput> Reply(TOutput message) => new(message);
+    protected Send<TOutput> Send(TOutput message) => new(message);
+    protected Publish<TOutput> Publish(TOutput message) => new(message);
+    protected Schedule<TOutput> Schedule(TimeSpan after, TOutput message) => new(after, message);
+    protected Complete<TOutput> Complete() => new();
+
+    public virtual IReadOnlyList<WorkflowEvent<TInput, TOutput>> Translate(
         bool begins,
         TInput message,
         IReadOnlyList<WorkflowCommand<TOutput>> commands)
@@ -35,23 +52,23 @@ public abstract class Workflow<TInput, TState, TOutput> : IWorkflow<TInput, TSta
 
         if (begins)
         {
-            events.Add(new Began<TInput, TOutput>());
-            events.Add(new InitiatedBy<TInput, TOutput>(message));
+            events.Add(Began());
+            events.Add(InitiatedBy(message));
         }
         else
         {
-            events.Add(new Received<TInput, TOutput>(message));
+            events.Add(Received(message));
         }
 
         foreach (var command in commands)
         {
             events.Add(command switch
             {
-                Reply<TOutput> r => new Replied<TInput, TOutput>(r.Message),
-                Send<TOutput> s => new Sent<TInput, TOutput>(s.Message),
-                Publish<TOutput> p => new Published<TInput, TOutput>(p.Message),
-                Schedule<TOutput> sc => new Scheduled<TInput, TOutput>(sc.After, sc.Message),
-                Complete<TOutput> => new Completed<TInput, TOutput>(),
+                Reply<TOutput> r => Replied(r.Message),
+                Send<TOutput> s => Sent(s.Message),
+                Publish<TOutput> p => Published(p.Message),
+                Schedule<TOutput> sc => Scheduled(sc.After, sc.Message),
+                Complete<TOutput> => Completed(),
                 _ => throw new InvalidOperationException($"Unknown command type: {command}")
             });
         }

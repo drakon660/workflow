@@ -6,6 +6,7 @@ namespace Workflow.Tests;
 public class GroupCheckoutWorkflowTests
 {
     private readonly GroupCheckoutWorkflow _workflow = new();
+    private readonly WorkflowOrchestrator<GroupCheckoutInputMessage, GroupCheckoutState, GroupCheckoutOutputMessage> _orchestrator = new();
 
     [Fact]
     public void Initial_State_Should_Be_NotExisting()
@@ -23,7 +24,7 @@ public class GroupCheckoutWorkflowTests
         // Arrange
         var state = new NotExisting();
         var input = new InitiateGroupCheckout("group-123", [new Guest("guest-1"), new Guest("guest-2")]);
-
+        
         // Act
         var commands = _workflow.Decide(input, state);
 

@@ -100,45 +100,36 @@ public class IssueFineForSpeedingViolationWorkflowTests
     public void SpeedingViolation_Full_Workflow_Happy_Path()
     {
         var workflow = new IssueFineForSpeedingViolationWorkflow();
-        var state = workflow.InitialState;
-
-        // Event store - save all events for audit trail
         var eventStore = new List<WorkflowEvent<InputMessage, OutputMessage>>();
 
         // Step 1: Police report published
         InputMessage message1 = new PoliceReportPublished(
             "XG.96.L1.5000267/2023",
             new SpeedingViolation("50km/h"));
+        
+        var workflowOrchestrator = new WorkflowOrchestrator<InputMessage, State, OutputMessage>();
 
-        var commands1 = workflow.Decide(message1, state);
-        var events1 = workflow.Translate(true, message1, commands1);
+        var snapshot = workflowOrchestrator.CreateInitialSnapshot(workflow);
 
-        foreach (var @event in events1)
-        {
-            eventStore.Add(@event);
-            state = workflow.Evolve(state, @event);
-        }
+        var result = workflowOrchestrator.Process(workflow, snapshot, message1, true);
 
-        state.Should().BeOfType<AwaitingSystemNumber>();
-        var awaitingSystemNumber = (AwaitingSystemNumber)state;
+        eventStore.AddRange(result.NewEvents);
+        
+        result.NewSnapshot.State.Should().BeOfType<AwaitingSystemNumber>();
+        var awaitingSystemNumber = (AwaitingSystemNumber)result.NewSnapshot.State;
         awaitingSystemNumber.PoliceReportId.Should().Be("XG.96.L1.5000267/2023");
 
         // Step 2: System number generated
         InputMessage message2 = new TrafficFineSystemNumberGenerated(
             "XG.96.L1.5000267/2023",
             "SN-12345");
-
-        var commands2 = workflow.Decide(message2, state);
-        var events2 = workflow.Translate(false, message2, commands2);
-
-        foreach (var @event in events2)
-        {
-            eventStore.Add(@event);
-            state = workflow.Evolve(state, @event);
-        }
-
-        state.Should().BeOfType<AwaitingManualIdentificationCode>();
-        var awaitingCode = (AwaitingManualIdentificationCode)state;
+        
+        var nextResult = workflowOrchestrator.Process(workflow, result.NewSnapshot, message2);
+        
+        eventStore.AddRange(nextResult.NewEvents);
+        
+        nextResult.NewSnapshot.State.Should().BeOfType<AwaitingManualIdentificationCode>();
+        var awaitingCode = (AwaitingManualIdentificationCode)nextResult.NewSnapshot.State;
         awaitingCode.PoliceReportId.Should().Be("XG.96.L1.5000267/2023");
         awaitingCode.SystemNumber.Should().Be("SN-12345");
 
@@ -148,45 +139,40 @@ public class IssueFineForSpeedingViolationWorkflowTests
             "SN-12345",
             "CODE-789");
 
-        var commands3 = workflow.Decide(message3, state);
-        var events3 = workflow.Translate(false, message3, commands3);
-
-        foreach (var @event in events3)
-        {
-            eventStore.Add(@event);
-            state = workflow.Evolve(state, @event);
-        }
-
-        state.Should().BeOfType<Final>();
-
-        // Validate all events are present in correct order
+        var nextResult1 = workflowOrchestrator.Process(workflow, nextResult.NewSnapshot, message3);
+        
+        eventStore.AddRange(nextResult1.NewEvents);
+        
+        nextResult1.NewSnapshot.State.Should().BeOfType<Final>();
+        //
+        // // Validate all events are present in correct order
         eventStore.Should().HaveCount(8);
-
+        
         // Step 1 events (3 events: Began, InitiatedBy, Sent)
         eventStore[0].Should().BeOfType<Began<InputMessage, OutputMessage>>();
-
+        
         eventStore[1].Should().BeOfType<InitiatedBy<InputMessage, OutputMessage>>();
         var initiatedBy = (InitiatedBy<InputMessage, OutputMessage>)eventStore[1];
         initiatedBy.Message.Should().BeOfType<PoliceReportPublished>();
-
+        
         eventStore[2].Should().BeOfType<Sent<InputMessage, OutputMessage>>();
         var sent1 = (Sent<InputMessage, OutputMessage>)eventStore[2];
         sent1.Message.Should().BeOfType<GenerateTrafficFineSystemNumber>();
-
+        
         // Step 2 events (2 events: Received, Sent)
         eventStore[3].Should().BeOfType<Received<InputMessage, OutputMessage>>();
         var received1 = (Received<InputMessage, OutputMessage>)eventStore[3];
         received1.Message.Should().BeOfType<TrafficFineSystemNumberGenerated>();
-
+        
         eventStore[4].Should().BeOfType<Sent<InputMessage, OutputMessage>>();
         var sent2 = (Sent<InputMessage, OutputMessage>)eventStore[4];
         sent2.Message.Should().BeOfType<GenerateTrafficFineManualIdentificationCode>();
-
+        
         // Step 3 events (3 events: Received, Sent, Completed)
         eventStore[5].Should().BeOfType<Received<InputMessage, OutputMessage>>();
         var received2 = (Received<InputMessage, OutputMessage>)eventStore[5];
         received2.Message.Should().BeOfType<TrafficFineManualIdentificationCodeGenerated>();
-
+        
         eventStore[6].Should().BeOfType<Sent<InputMessage, OutputMessage>>();
         var sent3 = (Sent<InputMessage, OutputMessage>)eventStore[6];
         sent3.Message.Should().BeOfType<IssueTrafficFine>();
@@ -194,9 +180,9 @@ public class IssueFineForSpeedingViolationWorkflowTests
         issueFine.PoliceReportId.Should().Be("XG.96.L1.5000267/2023");
         issueFine.SystemNumber.Should().Be("SN-12345");
         issueFine.ManualIdentificationCode.Should().Be("CODE-789");
-
+        
         eventStore[7].Should().BeOfType<Completed<InputMessage, OutputMessage>>();
-
+        
         // Bonus: Verify we can reconstruct state from events
         var reconstructedState = workflow.InitialState;
         foreach (var @event in eventStore)

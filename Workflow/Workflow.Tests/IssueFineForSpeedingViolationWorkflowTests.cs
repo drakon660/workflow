@@ -113,10 +113,10 @@ public class IssueFineForSpeedingViolationWorkflowTests
 
         var result = workflowOrchestrator.Process(workflow, snapshot, message1, true);
 
-        eventStore.AddRange(result.NewEvents);
+        eventStore.AddRange(result.Events);
         
-        result.NewSnapshot.State.Should().BeOfType<AwaitingSystemNumber>();
-        var awaitingSystemNumber = (AwaitingSystemNumber)result.NewSnapshot.State;
+        result.Snapshot.State.Should().BeOfType<AwaitingSystemNumber>();
+        var awaitingSystemNumber = (AwaitingSystemNumber)result.Snapshot.State;
         awaitingSystemNumber.PoliceReportId.Should().Be("XG.96.L1.5000267/2023");
 
         // Step 2: System number generated
@@ -124,12 +124,12 @@ public class IssueFineForSpeedingViolationWorkflowTests
             "XG.96.L1.5000267/2023",
             "SN-12345");
         
-        var nextResult = workflowOrchestrator.Process(workflow, result.NewSnapshot, message2);
+        var nextResult = workflowOrchestrator.Process(workflow, result.Snapshot, message2);
         
-        eventStore.AddRange(nextResult.NewEvents);
+        eventStore.AddRange(nextResult.Events);
         
-        nextResult.NewSnapshot.State.Should().BeOfType<AwaitingManualIdentificationCode>();
-        var awaitingCode = (AwaitingManualIdentificationCode)nextResult.NewSnapshot.State;
+        nextResult.Snapshot.State.Should().BeOfType<AwaitingManualIdentificationCode>();
+        var awaitingCode = (AwaitingManualIdentificationCode)nextResult.Snapshot.State;
         awaitingCode.PoliceReportId.Should().Be("XG.96.L1.5000267/2023");
         awaitingCode.SystemNumber.Should().Be("SN-12345");
 
@@ -139,11 +139,11 @@ public class IssueFineForSpeedingViolationWorkflowTests
             "SN-12345",
             "CODE-789");
 
-        var nextResult1 = workflowOrchestrator.Process(workflow, nextResult.NewSnapshot, message3);
+        var nextResult1 = workflowOrchestrator.Process(workflow, nextResult.Snapshot, message3);
         
-        eventStore.AddRange(nextResult1.NewEvents);
+        eventStore.AddRange(nextResult1.Events);
         
-        nextResult1.NewSnapshot.State.Should().BeOfType<Final>();
+        nextResult1.Snapshot.State.Should().BeOfType<Final>();
         //
         // // Validate all events are present in correct order
         eventStore.Should().HaveCount(8);

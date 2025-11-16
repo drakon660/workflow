@@ -33,8 +33,8 @@ public class WorkflowOrchestratorTests
         var result = _orchestrator.Process(_workflow, initialSnapshot, message, begins: true);
 
         // Assert - New snapshot has updated state
-        result.NewSnapshot.State.Should().BeOfType<Pending>();
-        var pendingState = (Pending)result.NewSnapshot.State;
+        result.Snapshot.State.Should().BeOfType<Pending>();
+        var pendingState = (Pending)result.Snapshot.State;
         pendingState.GroupCheckoutId.Should().Be("group-123");
         pendingState.Guests.Should().HaveCount(2);
 
@@ -43,14 +43,14 @@ public class WorkflowOrchestratorTests
         result.Commands.Should().AllBeOfType<Send<GroupCheckoutOutputMessage>>();
 
         // Assert - Events were generated and appended
-        result.NewEvents.Should().HaveCount(4); // Began + InitiatedBy + 2x Sent
-        result.NewEvents[0].Should().BeOfType<Began<GroupCheckoutInputMessage, GroupCheckoutOutputMessage>>();
-        result.NewEvents[1].Should().BeOfType<InitiatedBy<GroupCheckoutInputMessage, GroupCheckoutOutputMessage>>();
-        result.NewEvents[2].Should().BeOfType<Sent<GroupCheckoutInputMessage, GroupCheckoutOutputMessage>>();
-        result.NewEvents[3].Should().BeOfType<Sent<GroupCheckoutInputMessage, GroupCheckoutOutputMessage>>();
+        result.Events.Should().HaveCount(4); // Began + InitiatedBy + 2x Sent
+        result.Events[0].Should().BeOfType<Began<GroupCheckoutInputMessage, GroupCheckoutOutputMessage>>();
+        result.Events[1].Should().BeOfType<InitiatedBy<GroupCheckoutInputMessage, GroupCheckoutOutputMessage>>();
+        result.Events[2].Should().BeOfType<Sent<GroupCheckoutInputMessage, GroupCheckoutOutputMessage>>();
+        result.Events[3].Should().BeOfType<Sent<GroupCheckoutInputMessage, GroupCheckoutOutputMessage>>();
 
         // Assert - Event history includes all events
-        result.NewSnapshot.EventHistory.Should().HaveCount(4);
+        result.Snapshot.EventHistory.Should().HaveCount(4);
     }
 
     [Fact]
@@ -73,8 +73,8 @@ public class WorkflowOrchestratorTests
         var result = _orchestrator.Process(_workflow, snapshot, message, begins: false);
 
         // Assert - State evolved correctly
-        result.NewSnapshot.State.Should().BeOfType<Pending>();
-        var pendingState = (Pending)result.NewSnapshot.State;
+        result.Snapshot.State.Should().BeOfType<Pending>();
+        var pendingState = (Pending)result.Snapshot.State;
         pendingState.Guests.First(g => g.Id == "guest-1").GuestStayStatus.Should().Be(GuestStayStatus.Completed);
         pendingState.Guests.First(g => g.Id == "guest-2").GuestStayStatus.Should().Be(GuestStayStatus.Pending);
 
@@ -82,11 +82,11 @@ public class WorkflowOrchestratorTests
         result.Commands.Should().BeEmpty();
 
         // Assert - New event was added
-        result.NewEvents.Should().HaveCount(1);
-        result.NewEvents[0].Should().BeOfType<Received<GroupCheckoutInputMessage, GroupCheckoutOutputMessage>>();
+        result.Events.Should().HaveCount(1);
+        result.Events[0].Should().BeOfType<Received<GroupCheckoutInputMessage, GroupCheckoutOutputMessage>>();
 
         // Assert - Event history accumulated correctly
-        result.NewSnapshot.EventHistory.Should().HaveCount(3); // Original 2 + new 1
+        result.Snapshot.EventHistory.Should().HaveCount(3); // Original 2 + new 1
     }
 
     [Fact]
@@ -105,19 +105,19 @@ public class WorkflowOrchestratorTests
         // - Execute the commands (result1.Commands)
         // - Persist the snapshot (result1.NewSnapshot) to database/event store
         result1.Commands.Should().HaveCount(2); // CheckOut commands for both guests
-        result1.NewSnapshot.EventHistory.Should().HaveCount(4);
+        result1.Snapshot.EventHistory.Should().HaveCount(4);
 
         // Step 3: Process first guest checkout
         var guest1CheckedOut = new GuestCheckedOut("guest-1");
-        var result2 = _orchestrator.Process(_workflow, result1.NewSnapshot, guest1CheckedOut, begins: false);
+        var result2 = _orchestrator.Process(_workflow, result1.Snapshot, guest1CheckedOut, begins: false);
 
         // No commands yet (still waiting for guest-2)
         result2.Commands.Should().BeEmpty();
-        result2.NewSnapshot.EventHistory.Should().HaveCount(5); // Previous 4 + new 1
+        result2.Snapshot.EventHistory.Should().HaveCount(5); // Previous 4 + new 1
 
         // Step 4: Process second guest checkout - workflow completes
         var guest2CheckedOut = new GuestCheckedOut("guest-2");
-        var result3 = _orchestrator.Process(_workflow, result2.NewSnapshot, guest2CheckedOut, begins: false);
+        var result3 = _orchestrator.Process(_workflow, result2.Snapshot, guest2CheckedOut, begins: false);
 
         // Commands generated for completion
         result3.Commands.Should().HaveCount(2); // Send + Complete
@@ -125,16 +125,16 @@ public class WorkflowOrchestratorTests
         result3.Commands[1].Should().BeOfType<Complete<GroupCheckoutOutputMessage>>();
 
         // Final state
-        result3.NewSnapshot.State.Should().BeOfType<Finished>();
-        result3.NewSnapshot.EventHistory.Should().HaveCount(8); // Complete event history
+        result3.Snapshot.State.Should().BeOfType<Finished>();
+        result3.Snapshot.EventHistory.Should().HaveCount(8); // Complete event history
 
         // Verify we can rebuild state from event history
         var rebuiltState = _workflow.InitialState;
-        foreach (var evt in result3.NewSnapshot.EventHistory)
+        foreach (var evt in result3.Snapshot.EventHistory)
         {
             rebuiltState = _workflow.Evolve(rebuiltState, evt);
         }
-        rebuiltState.Should().Be(result3.NewSnapshot.State);
+        rebuiltState.Should().Be(result3.Snapshot.State);
     }
 
     [Fact]
@@ -155,7 +155,7 @@ public class WorkflowOrchestratorTests
         var result = _orchestrator.Process(_workflow, snapshot, timeoutMessage, begins: false);
 
         // Assert - Workflow completes with timeout
-        result.NewSnapshot.State.Should().BeOfType<Finished>();
+        result.Snapshot.State.Should().BeOfType<Finished>();
         result.Commands.Should().HaveCount(2); // Send + Complete
 
         var sendCommand = (Send<GroupCheckoutOutputMessage>)result.Commands[0];
@@ -181,7 +181,7 @@ public class WorkflowOrchestratorTests
         // (c) Appends events to history
         // (d) Evolves state
         // (e) Returns everything needed for persistence
-
+        
         var message = new InitiateGroupCheckout("group-123", [new Guest("guest-1")]);
 
         //var result = _orchestrator.Process(_workflow, snapshot, message, begins: true);
@@ -190,19 +190,22 @@ public class WorkflowOrchestratorTests
         // Verify all orchestration steps occurred:
 
         // (a) Decide was called - commands generated
-        // result.Commands.Should().NotBeEmpty();
-        //
-        // // (b) Translate was called - events match command pattern
-        // result.NewEvents.Should().Contain(e => e is Sent<GroupCheckoutInputMessage, GroupCheckoutOutputMessage>);
-        //
-        // // (c) Events appended to history
-        // result.NewSnapshot.EventHistory.Should().HaveCount(result.NewEvents.Count);
-        //
-        // // (d) State evolved from initial
-        // result.NewSnapshot.State.Should().NotBe(snapshot.State);
-        //
-        // // (e) New snapshot ready for persistence
-        // result.NewSnapshot.Should().NotBeNull();
-        // result.NewSnapshot.State.Should().BeOfType<Pending>();
+        //result.Commands.Should().NotBeEmpty();
+        
+        // (b) Translate was called - events match command pattern
+        result.NewSnapshot.EventHistory.Should().Contain(e => e is Sent<GroupCheckoutInputMessage, GroupCheckoutOutputMessage>);
+        
+        // (c) Events appended to history
+        //result.NewSnapshot.EventHistory.Should().HaveCount(result.NewSnapshot..);
+        
+        // (d) State evolved from initial
+        //result.NewSnapshot.State.Should().NotBe(snapshot.State);
+        
+        // (e) New snapshot ready for persistence
+        result.NewSnapshot.Should().NotBeNull();
+        result.NewSnapshot.State.Should().BeOfType<Pending>();
+
+        var messages =  await persistance.ReadStreamAsync("1");
+        var list = messages.Select(x => x.Message);
     }
 }

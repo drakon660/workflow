@@ -6,9 +6,9 @@ public record WorkflowSnapshot<TInput, TState, TOutput>(
 );
 
 public record OrchestrationResult<TInput, TState, TOutput>(
-    WorkflowSnapshot<TInput, TState, TOutput> NewSnapshot,
+    WorkflowSnapshot<TInput, TState, TOutput> Snapshot,
     IReadOnlyList<WorkflowCommand<TOutput>> Commands,
-    IReadOnlyList<WorkflowEvent<TInput, TOutput>> NewEvents
+    IReadOnlyList<WorkflowEvent<TInput, TOutput>> Events
 );
 
 public class WorkflowOrchestrator<TInput, TState, TOutput>

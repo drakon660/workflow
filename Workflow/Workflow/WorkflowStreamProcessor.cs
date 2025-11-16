@@ -60,6 +60,10 @@ public class WorkflowStreamProcessor<TInput, TState, TOutput>(
 
         foreach (var command in orchestrationResult.Commands)
         {
+            // Skip Complete - it's a meta-command, not a message to store
+            if (command is Complete<TOutput>)
+                continue;
+
             currentPosition++;
 
             // Extract the actual output message from the command
@@ -77,7 +81,7 @@ public class WorkflowStreamProcessor<TInput, TState, TOutput>(
         }
 
         // Step 6: Convert events to output messages (for audit trail)
-        foreach (var evt in orchestrationResult.NewEvents)
+        foreach (var evt in orchestrationResult.Events)
         {
             currentPosition++;
 
@@ -101,7 +105,7 @@ public class WorkflowStreamProcessor<TInput, TState, TOutput>(
         // Step 8: Return result with updated snapshot
         return new StreamProcessingResult<TInput, TState, TOutput>(
             WorkflowId: workflowId,
-            NewSnapshot: orchestrationResult.NewSnapshot,
+            NewSnapshot: orchestrationResult.Snapshot,
             OutputMessages: outputMessages,
             StreamPosition: currentPosition
         );
@@ -136,8 +140,9 @@ public class WorkflowStreamProcessor<TInput, TState, TOutput>(
 
     /// <summary>
     /// Extracts the actual output message from a WorkflowCommand.
+    /// Note: Complete commands are filtered out before calling this method.
     /// </summary>
-    private object ExtractOutputFromCommand(WorkflowCommand<TOutput> command)
+    private TOutput ExtractOutputFromCommand(WorkflowCommand<TOutput> command)
     {
         return command switch
         {
@@ -145,7 +150,6 @@ public class WorkflowStreamProcessor<TInput, TState, TOutput>(
             Publish<TOutput> publish => publish.Message!,
             Reply<TOutput> reply => reply.Message!,
             Schedule<TOutput> schedule => schedule.Message!,
-            Complete<TOutput> => new WorkflowCompleted(), // Marker
             _ => throw new InvalidOperationException($"Unknown command type: {command.GetType().Name}")
         };
     }
@@ -177,8 +181,3 @@ public record StreamProcessingResult<TInput, TState, TOutput>(
     IReadOnlyList<WorkflowMessage<TInput, TOutput>> OutputMessages,
     long StreamPosition
 );
-
-/// <summary>
-/// Marker type for Complete command.
-/// </summary>
-public record WorkflowCompleted;

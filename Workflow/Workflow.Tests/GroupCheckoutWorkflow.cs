@@ -26,6 +26,8 @@ public class GroupCheckoutWorkflow : Workflow<GroupCheckoutInputMessage, GroupCh
             (Pending, Received<GroupCheckoutInputMessage, GroupCheckoutOutputMessage> { Message: TimeoutGroupCheckout }) =>
                 new Finished(),
 
+            (Pending p, Received<GroupCheckoutInputMessage, GroupCheckoutOutputMessage> { Message: GetCheckoutStatus m }) => state,
+            
             // Unhandled events - return state unchanged
             _ => throw new InvalidOperationException($"{workflowEvent} not supported by {state}")
         };
@@ -64,6 +66,18 @@ public class GroupCheckoutWorkflow : Workflow<GroupCheckoutInputMessage, GroupCh
                      Complete()
                  ],
 
+            (GetCheckoutStatus m, Pending p) => [
+                Reply(new CheckoutStatus(
+                    GroupCheckoutId: p.GroupCheckoutId,
+                    Status: "Pending",
+                    TotalGuests: p.Guests.Count,
+                    CompletedGuests: p.Guests.Count(g => g.GuestStayStatus == GuestStayStatus.Completed),
+                    FailedGuests: p.Guests.Count(g => g.GuestStayStatus == GuestStayStatus.Failed),
+                    PendingGuests: p.Guests.Count(g => g.GuestStayStatus == GuestStayStatus.Pending),
+                    Guests: p.Guests.Select(g => new GuestStatus(g.Id, g.GuestStayStatus.ToString())).ToList()
+                ))
+            ],
+            
             _ => EmptyCommands
         };
     }
@@ -163,9 +177,21 @@ public record GuestCheckedOut(string GuestStayAccountId) : GroupCheckoutInputMes
 public record GuestCheckoutFailed(string GuestStayAccountId, string Reason) : GroupCheckoutInputMessage;
 public record TimeoutGroupCheckout(string GroupCheckoutId) : GroupCheckoutInputMessage;
 
+public record GetCheckoutStatus(string GroupCheckoutId) : GroupCheckoutInputMessage;
+
 // Output message types
 public abstract record GroupCheckoutOutputMessage;
 public record CheckOut(string GuestStayAccountId) : GroupCheckoutOutputMessage;
 public record GroupCheckoutCompleted(string GroupCheckoutId, List<string> CompletedCheckouts) : GroupCheckoutOutputMessage;
 public record GroupCheckoutFailed(string GroupCheckoutId, List<string> CompletedCheckouts, List<string> FailedCheckouts) : GroupCheckoutOutputMessage;
 public record GroupCheckoutTimedOut(string GroupCheckoutId, List<string> PendingCheckouts) : GroupCheckoutOutputMessage;
+public record GuestStatus(string GuestId, string Status);
+public record CheckoutStatus(
+    string GroupCheckoutId,
+    string Status,  // "Pending", "Completed", "Failed"
+    int TotalGuests,
+    int CompletedGuests,
+    int FailedGuests,
+    int PendingGuests,
+    List<GuestStatus> Guests
+) : GroupCheckoutOutputMessage;

@@ -186,7 +186,8 @@ public class WorkflowOrchestratorTests
 
         //var result = _orchestrator.Process(_workflow, snapshot, message, begins: true);
 
-        var result = await streamProcessor.ProcessAsync(workflow, workflowId, message, true);
+        // WorkflowStreamProcessor automatically determines 'begins' from the stream state
+        var result = await streamProcessor.ProcessAsync(workflow, workflowId, message);
         // Verify all orchestration steps occurred:
 
         // (a) Decide was called - commands generated
@@ -207,5 +208,9 @@ public class WorkflowOrchestratorTests
 
         var messages =  await persistance.ReadStreamAsync("1");
         var list = messages.Select(x => x.Message);
+
+        var checkStatusMessage = new GetCheckoutStatus("group-123");
+        
+        var checkStatusResult = await streamProcessor.ProcessAsync(workflow, workflowId, checkStatusMessage);
     }
 }

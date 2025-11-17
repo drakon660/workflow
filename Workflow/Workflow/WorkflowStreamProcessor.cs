@@ -27,12 +27,14 @@ public class WorkflowStreamProcessor<TInput, TState, TOutput>(
     /// 3. Call decide
     /// 4. Store outputs in stream
     /// 5. Return result
+    ///
+    /// The processor automatically determines if this is the beginning of the workflow
+    /// by checking if there are any events in the event history.
     /// </summary>
     public async Task<StreamProcessingResult<TInput, TState, TOutput>> ProcessAsync(
         IWorkflow<TInput, TState, TOutput> workflow,
         string workflowId,
-        TInput message,
-        bool begins = false)
+        TInput message)
     {
         // Step 1: Store input message in stream
         var inputMessage = new WorkflowMessage<TInput, TOutput>(
@@ -51,7 +53,11 @@ public class WorkflowStreamProcessor<TInput, TState, TOutput>(
         var allMessages = await persistence.ReadStreamAsync(workflowId);
         var snapshot = RebuildStateFromStream(workflow, allMessages);
 
-        // Step 3 & 4: Use pure orchestrator for business logic (Decide + Translate)
+        // Step 3: Automatically determine if this is the beginning
+        // If there are no events in history, this is the first message
+        var begins = !snapshot.EventHistory.Any();
+
+        // Step 4 & 5: Use pure orchestrator for business logic (Decide + Translate)
         var orchestrationResult = orchestrator.Process(workflow, snapshot, message, begins);
 
         // Step 5: Convert commands to output messages

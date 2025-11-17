@@ -254,26 +254,28 @@ public class GroupCheckoutWorkflowTests
         events.Should().HaveCount(1);
         events[0].Should().BeOfType<Received<GroupCheckoutInputMessage, GroupCheckoutOutputMessage>>();
     }
-    //
+    
     // [Fact]
     // public void Full_Workflow_Happy_Path_All_Guests_Succeed()
     // {
     //     // This test demonstrates the complete workflow with event sourcing
     //     var eventStore = new List<WorkflowEvent<GroupCheckoutInputMessage, GroupCheckoutOutputMessage>>();
-    //     var state = _workflow.InitialState;
+    //
+    //     var workflow = new GroupCheckoutWorkflow();
+    //     
     //
     //     // Step 1: Initiate group checkout
-    //     var initiateInput = new InitiateGroupCheckout("group-123", new List<string> { "guest-1", "guest-2" });
-    //     var initiateCommands = _workflow.Decide(initiateInput, state);
-    //     var initiateEvents = _workflow.Translate(begins: true, initiateInput, initiateCommands);
+    //     var initiateInput = new InitiateGroupCheckout("group-123", [new Guest("guest-1"), new Guest("guest-2")]);
+    //
+    //     var workflowProcessor = new WorkflowOrchestrator<GroupCheckoutInputMessage, GroupCheckoutState, GroupCheckoutOutputMessage>();
+    //     var snapshot = workflowProcessor.CreateInitialSnapshot(workflow);
+    //     
+    //     var result = workflowProcessor.Process(workflow, snapshot, initiateInput);
+    //     
     //     eventStore.AddRange(initiateEvents);
     //
     //     // Rebuild state from events
-    //     foreach (var evt in initiateEvents)
-    //     {
-    //         state = _workflow.Evolve(state, evt);
-    //     }
-    //
+    //     
     //     state.Should().BeOfType<Pending>();
     //
     //     // Step 2: First guest checks out successfully
@@ -324,7 +326,7 @@ public class GroupCheckoutWorkflowTests
     //     }
     //     replayedState.Should().Be(state);
     // }
-    //
+    
     // [Fact]
     // public void Full_Workflow_Partial_Failure_Path()
     // {

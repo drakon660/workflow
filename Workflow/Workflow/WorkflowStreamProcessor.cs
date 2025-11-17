@@ -111,7 +111,7 @@ public class WorkflowStreamProcessor<TInput, TState, TOutput>(
         // Step 8: Return result with updated snapshot
         return new StreamProcessingResult<TInput, TState, TOutput>(
             WorkflowId: workflowId,
-            NewSnapshot: orchestrationResult.Snapshot,
+            Snapshot: orchestrationResult.Snapshot,
             OutputMessages: outputMessages,
             StreamPosition: currentPosition
         );
@@ -183,7 +183,7 @@ public class WorkflowStreamProcessor<TInput, TState, TOutput>(
 /// </summary>
 public record StreamProcessingResult<TInput, TState, TOutput>(
     string WorkflowId,
-    WorkflowSnapshot<TInput, TState, TOutput> NewSnapshot,
+    WorkflowSnapshot<TInput, TState, TOutput> Snapshot,
     IReadOnlyList<WorkflowMessage<TInput, TOutput>> OutputMessages,
     long StreamPosition
 );

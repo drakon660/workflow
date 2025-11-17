@@ -194,7 +194,7 @@ public class WorkflowOrchestratorTests
         //result.Commands.Should().NotBeEmpty();
         
         // (b) Translate was called - events match command pattern
-        result.NewSnapshot.EventHistory.Should().Contain(e => e is Sent<GroupCheckoutInputMessage, GroupCheckoutOutputMessage>);
+        result.Snapshot.EventHistory.Should().Contain(e => e is Sent<GroupCheckoutInputMessage, GroupCheckoutOutputMessage>);
         
         // (c) Events appended to history
         //result.NewSnapshot.EventHistory.Should().HaveCount(result.NewSnapshot..);
@@ -203,8 +203,8 @@ public class WorkflowOrchestratorTests
         //result.NewSnapshot.State.Should().NotBe(snapshot.State);
         
         // (e) New snapshot ready for persistence
-        result.NewSnapshot.Should().NotBeNull();
-        result.NewSnapshot.State.Should().BeOfType<Pending>();
+        result.Snapshot.Should().NotBeNull();
+        result.Snapshot.State.Should().BeOfType<Pending>();
 
         var messages =  await persistance.ReadStreamAsync("1");
         var list = messages.Select(x => x.Message);

@@ -111,7 +111,7 @@ public class IssueFineForSpeedingViolationWorkflowTests
 
         var snapshot = workflowOrchestrator.CreateInitialSnapshot(workflow);
 
-        var result = workflowOrchestrator.Process(workflow, snapshot, message1, true);
+        var result = workflowOrchestrator.Run(workflow, snapshot, message1, true);
 
         eventStore.AddRange(result.Events);
         
@@ -124,7 +124,7 @@ public class IssueFineForSpeedingViolationWorkflowTests
             "XG.96.L1.5000267/2023",
             "SN-12345");
         
-        var nextResult = workflowOrchestrator.Process(workflow, result.Snapshot, message2);
+        var nextResult = workflowOrchestrator.Run(workflow, result.Snapshot, message2);
         
         eventStore.AddRange(nextResult.Events);
         
@@ -139,7 +139,7 @@ public class IssueFineForSpeedingViolationWorkflowTests
             "SN-12345",
             "CODE-789");
 
-        var nextResult1 = workflowOrchestrator.Process(workflow, nextResult.Snapshot, message3);
+        var nextResult1 = workflowOrchestrator.Run(workflow, nextResult.Snapshot, message3);
         
         eventStore.AddRange(nextResult1.Events);
         

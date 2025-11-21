@@ -30,7 +30,7 @@ public class WorkflowOrchestratorTests
         var message = new InitiateGroupCheckout("group-123", [new Guest("guest-1"), new Guest("guest-2")]);
 
         // Act - Process the initiating message
-        var result = _orchestrator.Process(_workflow, initialSnapshot, message, begins: true);
+        var result = _orchestrator.Run(_workflow, initialSnapshot, message, begins: true);
 
         // Assert - New snapshot has updated state
         result.Snapshot.State.Should().BeOfType<Pending>();
@@ -70,7 +70,7 @@ public class WorkflowOrchestratorTests
         var message = new GuestCheckedOut("guest-1");
 
         // Act - Process the incoming message
-        var result = _orchestrator.Process(_workflow, snapshot, message, begins: false);
+        var result = _orchestrator.Run(_workflow, snapshot, message, begins: false);
 
         // Assert - State evolved correctly
         result.Snapshot.State.Should().BeOfType<Pending>();
@@ -99,7 +99,7 @@ public class WorkflowOrchestratorTests
 
         // Step 2: Process initiating message
         var initiateMessage = new InitiateGroupCheckout("group-123", [new Guest("guest-1"), new Guest("guest-2")]);
-        var result1 = _orchestrator.Process(_workflow, snapshot, initiateMessage, begins: true);
+        var result1 = _orchestrator.Run(_workflow, snapshot, initiateMessage, begins: true);
 
         // At this point, you would:
         // - Execute the commands (result1.Commands)
@@ -109,7 +109,7 @@ public class WorkflowOrchestratorTests
 
         // Step 3: Process first guest checkout
         var guest1CheckedOut = new GuestCheckedOut("guest-1");
-        var result2 = _orchestrator.Process(_workflow, result1.Snapshot, guest1CheckedOut, begins: false);
+        var result2 = _orchestrator.Run(_workflow, result1.Snapshot, guest1CheckedOut, begins: false);
 
         // No commands yet (still waiting for guest-2)
         result2.Commands.Should().BeEmpty();
@@ -117,7 +117,7 @@ public class WorkflowOrchestratorTests
 
         // Step 4: Process second guest checkout - workflow completes
         var guest2CheckedOut = new GuestCheckedOut("guest-2");
-        var result3 = _orchestrator.Process(_workflow, result2.Snapshot, guest2CheckedOut, begins: false);
+        var result3 = _orchestrator.Run(_workflow, result2.Snapshot, guest2CheckedOut, begins: false);
 
         // Commands generated for completion
         result3.Commands.Should().HaveCount(2); // Send + Complete
@@ -152,7 +152,7 @@ public class WorkflowOrchestratorTests
         var timeoutMessage = new TimeoutGroupCheckout("group-123");
 
         // Act
-        var result = _orchestrator.Process(_workflow, snapshot, timeoutMessage, begins: false);
+        var result = _orchestrator.Run(_workflow, snapshot, timeoutMessage, begins: false);
 
         // Assert - Workflow completes with timeout
         result.Snapshot.State.Should().BeOfType<Finished>();
@@ -209,8 +209,8 @@ public class WorkflowOrchestratorTests
         var messages =  await persistance.ReadStreamAsync("1");
         var list = messages.Select(x => x.Message);
 
-        var checkStatusMessage = new GetCheckoutStatus("group-123");
-        
-        var checkStatusResult = await streamProcessor.ProcessAsync(workflow, workflowId, checkStatusMessage);
+        // COMMENTED OUT: GetCheckoutStatus test - See ChatStates/REPLY_COMMAND_PATTERNS.md
+        // var checkStatusMessage = new GetCheckoutStatus("group-123");
+        // var checkStatusResult = await streamProcessor.ProcessAsync(workflow, workflowId, checkStatusMessage);
     }
 }

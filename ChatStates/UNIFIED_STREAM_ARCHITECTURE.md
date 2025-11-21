@@ -1,6 +1,6 @@
 # Unified Stream Architecture (RFC Option C)
 
-**Last Updated:** 2025-10-31
+**Last Updated:** 2025-11-17
 
 ---
 
@@ -13,6 +13,7 @@ This provides:
 - ✅ **Durability**: Commands persisted before execution (crash recovery)
 - ✅ **Idempotency**: Commands marked as processed (no duplicate execution)
 - ✅ **Simplicity**: Single storage model for everything
+- ✅ **Query support**: Reply commands for read-only operations without state mutation
 
 ---
 
@@ -384,15 +385,138 @@ Pos | Kind    | Direction | Message                    | Processed
 
 ---
 
+### 5. Query Operations with Reply Commands
+
+**Pattern:** Read-only operations that don't mutate state
+
+**Example: GetCheckoutStatus**
+```csharp
+// Input message
+public record GetCheckoutStatus(string GroupCheckoutId) : GroupCheckoutInputMessage;
+
+// Output message (reply)
+public record CheckoutStatus(
+    string GroupCheckoutId,
+    string Status,
+    int TotalGuests,
+    int CompletedGuests,
+    int FailedGuests,
+    int PendingGuests,
+    List<GuestStatus> Guests
+) : GroupCheckoutOutputMessage;
+```
+
+**Workflow Implementation:**
+```csharp
+// Decide: Generate Reply command
+(GetCheckoutStatus m, Pending p) => [
+    Reply(new CheckoutStatus(...))  // Read current state, no mutation
+],
+
+// Evolve: No state change for queries
+(Pending p, Received { Message: GetCheckoutStatus m }) => state,  // Return unchanged
+```
+
+**Key Insights:**
+- **Queries** are CQRS read operations - they extract information without changing state
+- **Reply** commands send responses back to the caller
+- **Evolve** returns state unchanged for query messages (valid pattern)
+- **Decide** generates the Reply command with computed data from current state
+- **No side effects** in the workflow state machine
+
+**Benefits:**
+- ✅ Clear separation of commands (write) vs queries (read)
+- ✅ State remains immutable for read operations
+- ✅ Reply commands are persisted in stream (full audit trail)
+- ✅ Can query workflow state without altering it
+
+---
+
 ## Testing Strategy
 
 ### Unit Tests (Pure Logic)
+Tests for individual workflow methods (Decide, Evolve, Translate):
 ```csharp
-// Use existing WorkflowOrchestrator tests (no changes needed)
-// These test pure business logic without I/O
+// Test that Decide generates correct commands
+[Fact]
+public void Decide_InitiateGroupCheckout_Should_Generate_CheckOut_Commands_For_All_Guests()
+{
+    var state = new NotExisting();
+    var input = new InitiateGroupCheckout("group-123", [new Guest("guest-1")]);
+
+    var commands = _workflow.Decide(input, state);
+
+    commands.Should().HaveCount(1);
+    commands[0].Should().BeOfType<Send<GroupCheckoutOutputMessage>>();
+}
+
+// Test that Evolve correctly transitions state
+[Fact]
+public void Evolve_InitiatedBy_Should_Transition_To_Pending_State()
+{
+    var state = new NotExisting();
+    var event = new InitiatedBy<...>(new InitiateGroupCheckout(...));
+
+    var newState = _workflow.Evolve(state, event);
+
+    newState.Should().BeOfType<Pending>();
+}
 ```
 
-### Integration Tests (With Persistence)
+### Integration Tests (Using WorkflowOrchestrator)
+Tests for complete workflow processing cycles:
+```csharp
+[Fact]
+public void GuestCheckedOut_Should_Update_Guest_Status_To_Completed()
+{
+    var snapshot = new WorkflowSnapshot<...>(
+        new Pending("group-123", [new Guest("guest-1"), new Guest("guest-2")]),
+        []
+    );
+    var input = new GuestCheckedOut("guest-1");
+
+    var result = _orchestrator.Process(_workflow, snapshot, input, begins: false);
+
+    result.Snapshot.State.Should().BeOfType<Pending>();
+    var pendingState = (Pending)result.Snapshot.State;
+    pendingState.Guests.First(x => x.Id == "guest-1").GuestStayStatus
+        .Should().Be(GuestStayStatus.Completed);
+}
+```
+
+### Scenario Tests (Full Workflow Paths)
+Tests for complete end-to-end scenarios:
+```csharp
+[Fact]
+public void Full_Workflow_Happy_Path_All_Guests_Succeed()
+{
+    // Step 1: Initiate
+    var snapshot = _orchestrator.CreateInitialSnapshot(_workflow);
+    var initiateInput = new InitiateGroupCheckout(...);
+    var result1 = _orchestrator.Process(_workflow, snapshot, initiateInput, begins: true);
+
+    // Step 2: First guest checks out
+    var result2 = _orchestrator.Process(_workflow, result1.Snapshot,
+        new GuestCheckedOut("guest-1"), begins: false);
+
+    // Step 3: Second guest checks out - workflow completes
+    var result3 = _orchestrator.Process(_workflow, result2.Snapshot,
+        new GuestCheckedOut("guest-2"), begins: false);
+
+    result3.Snapshot.State.Should().BeOfType<Finished>();
+    result3.Commands[0].Message.Should().BeOfType<GroupCheckoutCompleted>();
+}
+```
+
+**Current Test Status:**
+- ✅ 47 tests passing (all green)
+- ✅ Unit tests for Decide, Evolve, Translate
+- ✅ Integration tests using WorkflowOrchestrator
+- ✅ Full scenario tests (happy path, partial failure, timeout, queries)
+- ✅ Query operation tests (Reply command generation and state immutability)
+
+### Future: Stream Persistence Tests
+When WorkflowStreamProcessor is implemented (after refactoring per CONSUMER_AND_PERSISTENCE_DISCUSSION.md):
 ```csharp
 [Test]
 public async Task ProcessAsync_StoresCommandsInStream()
@@ -410,7 +534,8 @@ public async Task ProcessAsync_StoresCommandsInStream()
 }
 ```
 
-### End-to-End Tests (With Output Processor)
+### Future: Output Processor Tests
+When WorkflowOutputProcessor is fully integrated:
 ```csharp
 [Test]
 public async Task OutputProcessor_ExecutesCommands()
@@ -437,24 +562,31 @@ public async Task OutputProcessor_ExecutesCommands()
 
 ## Next Steps
 
-### Immediate
-1. ✅ Core abstractions created
-2. ✅ All 26 existing tests still pass
-3. ⏳ Create concrete `IWorkflowPersistence` implementations:
-   - InMemoryPersistence (for testing)
+### Completed ✅
+1. ✅ Core abstractions created (WorkflowMessage, IWorkflowPersistence, etc.)
+2. ✅ All 47 tests passing (including query operation tests)
+3. ✅ Query operations with Reply commands implemented
+4. ✅ Tests refactored to use WorkflowOrchestrator for integration testing
+5. ✅ InMemoryWorkflowPersistence implemented and tested
+
+### Immediate (Per CONSUMER_AND_PERSISTENCE_DISCUSSION.md)
+1. ⏳ Create `WorkflowInputRouter` - Routes from source streams to workflow streams
+2. ⏳ Create `WorkflowStreamConsumer` - Subscribes to workflow streams, triggers processing
+3. ⏳ Refactor `WorkflowStreamProcessor` - Remove input persistence, accept `fromPosition`
+4. ⏳ Create concrete persistence implementations:
    - PostgreSQLPersistence (for production)
    - SQLitePersistence (for local dev)
 
 ### Phase 2
-4. ⏳ Add workflow ID routing (`GetWorkflowId()` method)
-5. ⏳ Create background processor host (ASP.NET BackgroundService)
-6. ⏳ Add concurrency control (optimistic locking or advisory locks)
-7. ⏳ Add checkpoint management for exactly-once semantics
+5. ⏳ Add workflow ID routing (`GetWorkflowId()` method)
+6. ⏳ Create background processor host (ASP.NET BackgroundService)
+7. ⏳ Add concurrency control (optimistic locking or advisory locks)
+8. ⏳ Add checkpoint management for exactly-once semantics
 
 ### Phase 3
-8. ⏳ Add metrics/telemetry (OpenTelemetry integration)
-9. ⏳ Add error handling patterns (DLQ, retries, circuit breakers)
-10. ⏳ Add workflow versioning support
+9. ⏳ Add metrics/telemetry (OpenTelemetry integration)
+10. ⏳ Add error handling patterns (DLQ, retries, circuit breakers)
+11. ⏳ Add workflow versioning support
 
 ---
 
@@ -475,6 +607,8 @@ public async Task OutputProcessor_ExecutesCommands()
 ✅ Complete audit trail (inputs + outputs + execution status)
 ✅ Idempotency via Processed flag
 ✅ Single stream for complete observability
+✅ Query operations with Reply commands (CQRS read model)
+✅ State immutability for read operations
 ```
 
 ---
@@ -506,7 +640,10 @@ public async Task OutputProcessor_ExecutesCommands()
 - `Workflow/Workflow/WorkflowOrchestrator.cs` - Pure orchestration (unchanged)
 
 ### Domain (Tests)
-- All existing workflow tests still pass (no changes needed)
+- `Workflow/Workflow.Tests/GroupCheckoutWorkflowTests.cs` - 18 tests (refactored to use orchestrator)
+- `Workflow/Workflow.Tests/WorkflowOrchestratorTests.cs` - Orchestrator tests
+- `Workflow/Workflow.Tests/InMemoryWorkflowPersistenceTests.cs` - Persistence tests
+- **Total: 47 tests passing** ✅
 
 ### Documentation
 - `ChatStates/UNIFIED_STREAM_ARCHITECTURE.md` - This file
@@ -525,6 +662,14 @@ We've successfully implemented **RFC Option C**: Commands are stored in the unif
 ✅ **Idempotency** (processed flag prevents duplicates)
 ✅ **Crash recovery** (re-execute unprocessed commands)
 ✅ **Clean architecture** (separation of concerns)
-✅ **Backward compatible** (all 26 tests still pass)
+✅ **CQRS support** (Reply commands for queries without state mutation)
+✅ **Comprehensive testing** (47 tests passing, including query operations)
+✅ **Integration testing** (most tests refactored to use WorkflowOrchestrator)
 
-**Next milestone:** Implement concrete persistence (PostgreSQL/SQLite) and background processor hosting.
+**Recent Updates (2025-11-17):**
+- Added `GetCheckoutStatus` query operation with `Reply` command
+- Confirmed pattern: queries return state unchanged in `Evolve` (valid behavior)
+- Refactored tests to use `WorkflowOrchestrator` for integration testing
+- All 47 tests passing (up from 26 initially)
+
+**Next milestone:** Implement consumer/router separation (per CONSUMER_AND_PERSISTENCE_DISCUSSION.md), then concrete persistence (PostgreSQL/SQLite) and background processor hosting.

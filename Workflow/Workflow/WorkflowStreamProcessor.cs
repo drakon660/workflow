@@ -58,7 +58,7 @@ public class WorkflowStreamProcessor<TInput, TState, TOutput>(
         var begins = !snapshot.EventHistory.Any();
 
         // Step 4 & 5: Use pure orchestrator for business logic (Decide + Translate)
-        var orchestrationResult = orchestrator.Process(workflow, snapshot, message, begins);
+        var orchestrationResult = orchestrator.Run(workflow, snapshot, message, begins);
 
         // Step 5: Convert commands to output messages
         var currentPosition = allMessages.Any() ? allMessages.Max(m => m.Position) : 0;

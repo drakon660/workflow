@@ -26,8 +26,21 @@ public class GroupCheckoutWorkflow : Workflow<GroupCheckoutInputMessage, GroupCh
             (Pending, Received<GroupCheckoutInputMessage, GroupCheckoutOutputMessage> { Message: TimeoutGroupCheckout }) =>
                 new Finished(),
 
-            (Pending p, Received<GroupCheckoutInputMessage, GroupCheckoutOutputMessage> { Message: GetCheckoutStatus m }) => state,
-            
+            // COMMENTED OUT: GetCheckoutStatus Reply pattern
+            // This was a learning example to understand Reply commands, but Reply is NOT the right pattern
+            // for HTTP API status queries. Reply is designed for:
+            // 1. Async workflow-to-workflow communication (saga pattern)
+            // 2. Cross-service queries in message-based systems
+            // 3. Long-running operations where workflow waits for response
+            //
+            // For HTTP API status endpoints, use direct stream reads instead:
+            // var messages = await persistence.ReadStreamAsync("group-123");
+            // var state = RebuildState(messages);
+            // return Ok(state);
+            //
+            // See ChatStates/REPLY_COMMAND_PATTERNS.md for full discussion
+            // (Pending p, Received<GroupCheckoutInputMessage, GroupCheckoutOutputMessage> { Message: GetCheckoutStatus m }) => state,
+
             // Unhandled events - return state unchanged
             _ => throw new InvalidOperationException($"{workflowEvent} not supported by {state}")
         };
@@ -66,18 +79,20 @@ public class GroupCheckoutWorkflow : Workflow<GroupCheckoutInputMessage, GroupCh
                      Complete()
                  ],
 
-            (GetCheckoutStatus m, Pending p) => [
-                Reply(new CheckoutStatus(
-                    GroupCheckoutId: p.GroupCheckoutId,
-                    Status: "Pending",
-                    TotalGuests: p.Guests.Count,
-                    CompletedGuests: p.Guests.Count(g => g.GuestStayStatus == GuestStayStatus.Completed),
-                    FailedGuests: p.Guests.Count(g => g.GuestStayStatus == GuestStayStatus.Failed),
-                    PendingGuests: p.Guests.Count(g => g.GuestStayStatus == GuestStayStatus.Pending),
-                    Guests: p.Guests.Select(g => new GuestStatus(g.Id, g.GuestStayStatus.ToString())).ToList()
-                ))
-            ],
-            
+            // COMMENTED OUT: GetCheckoutStatus Reply pattern
+            // See comment in InternalEvolve and ChatStates/REPLY_COMMAND_PATTERNS.md
+            // (GetCheckoutStatus m, Pending p) => [
+            //     Reply(new CheckoutStatus(
+            //         GroupCheckoutId: p.GroupCheckoutId,
+            //         Status: "Pending",
+            //         TotalGuests: p.Guests.Count,
+            //         CompletedGuests: p.Guests.Count(g => g.GuestStayStatus == GuestStayStatus.Completed),
+            //         FailedGuests: p.Guests.Count(g => g.GuestStayStatus == GuestStayStatus.Failed),
+            //         PendingGuests: p.Guests.Count(g => g.GuestStayStatus == GuestStayStatus.Pending),
+            //         Guests: p.Guests.Select(g => new GuestStatus(g.Id, g.GuestStayStatus.ToString())).ToList()
+            //     ))
+            // ],
+
             _ => EmptyCommands
         };
     }
@@ -177,7 +192,8 @@ public record GuestCheckedOut(string GuestStayAccountId) : GroupCheckoutInputMes
 public record GuestCheckoutFailed(string GuestStayAccountId, string Reason) : GroupCheckoutInputMessage;
 public record TimeoutGroupCheckout(string GroupCheckoutId) : GroupCheckoutInputMessage;
 
-public record GetCheckoutStatus(string GroupCheckoutId) : GroupCheckoutInputMessage;
+// COMMENTED OUT: GetCheckoutStatus - See ChatStates/REPLY_COMMAND_PATTERNS.md
+// public record GetCheckoutStatus(string GroupCheckoutId) : GroupCheckoutInputMessage;
 
 // Output message types
 public abstract record GroupCheckoutOutputMessage;
@@ -185,13 +201,15 @@ public record CheckOut(string GuestStayAccountId) : GroupCheckoutOutputMessage;
 public record GroupCheckoutCompleted(string GroupCheckoutId, List<string> CompletedCheckouts) : GroupCheckoutOutputMessage;
 public record GroupCheckoutFailed(string GroupCheckoutId, List<string> CompletedCheckouts, List<string> FailedCheckouts) : GroupCheckoutOutputMessage;
 public record GroupCheckoutTimedOut(string GroupCheckoutId, List<string> PendingCheckouts) : GroupCheckoutOutputMessage;
-public record GuestStatus(string GuestId, string Status);
-public record CheckoutStatus(
-    string GroupCheckoutId,
-    string Status,  // "Pending", "Completed", "Failed"
-    int TotalGuests,
-    int CompletedGuests,
-    int FailedGuests,
-    int PendingGuests,
-    List<GuestStatus> Guests
-) : GroupCheckoutOutputMessage;
+
+// COMMENTED OUT: CheckoutStatus and GuestStatus - See ChatStates/REPLY_COMMAND_PATTERNS.md
+// public record GuestStatus(string GuestId, string Status);
+// public record CheckoutStatus(
+//     string GroupCheckoutId,
+//     string Status,  // "Pending", "Completed", "Failed"
+//     int TotalGuests,
+//     int CompletedGuests,
+//     int FailedGuests,
+//     int PendingGuests,
+//     List<GuestStatus> Guests
+// ) : GroupCheckoutOutputMessage;

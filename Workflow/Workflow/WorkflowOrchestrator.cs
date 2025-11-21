@@ -13,8 +13,7 @@ public record OrchestrationResult<TInput, TState, TOutput>(
 
 public class WorkflowOrchestrator<TInput, TState, TOutput>
 {
-    public OrchestrationResult<TInput, TState, TOutput> Process(
-        IWorkflow<TInput, TState, TOutput> workflow,
+    public OrchestrationResult<TInput, TState, TOutput> Run(IWorkflow<TInput, TState, TOutput> workflow,
         WorkflowSnapshot<TInput, TState, TOutput> snapshot,
         TInput message,
         bool begins = false)

@@ -1,4 +1,6 @@
-﻿namespace Workflow.Tests;
+﻿using Workflow.Core;
+
+namespace Workflow.Tests;
 
 public class IssueFineForSpeedingViolationWorkflow : Workflow<InputMessage, State, OutputMessage>
 {
@@ -17,10 +19,10 @@ public class IssueFineForSpeedingViolationWorkflow : Workflow<InputMessage, Stat
                     _ => throw new InvalidOperationException($"Unknown offense type: {m.Offense}")
                 },
 
-            (AwaitingSystemNumber s, Received<InputMessage, OutputMessage> e) when e.Message is TrafficFineSystemNumberGenerated m =>
+            (AwaitingSystemNumber s, Received<InputMessage, OutputMessage> { Message: TrafficFineSystemNumberGenerated m }) =>
                 new AwaitingManualIdentificationCode(s.PoliceReportId, m.Number),
 
-            (AwaitingManualIdentificationCode, Received<InputMessage, OutputMessage> e) when e.Message is TrafficFineManualIdentificationCodeGenerated =>
+            (AwaitingManualIdentificationCode, Received<InputMessage, OutputMessage> { Message: TrafficFineManualIdentificationCodeGenerated }) =>
                 new Final(),
 
             // Unhandled events - return state unchanged

@@ -24,12 +24,21 @@ public abstract class Workflow<TInput, TState, TOutput> : IWorkflow<TInput, TSta
 
     protected abstract TState InternalEvolve(TState state, WorkflowEvent<TInput, TOutput> workflowEvent);
 
+    protected static class Events
+    {
+        public record Received(TInput Message)
+            : Received<TInput, TOutput>(Message);
+
+        public record InitiatedBy(TInput Message)
+            : InitiatedBy<TInput, TOutput>(Message);
+    }
+    
     public abstract IReadOnlyList<WorkflowCommand<TOutput>> Decide(TInput input, TState state);
 
     // Helper methods for creating workflow events (shortcuts to avoid verbose constructors)
     protected Began<TInput, TOutput> Began() => new();
-    protected InitiatedBy<TInput, TOutput> InitiatedBy(TInput message) => new(message);
-    protected Received<TInput, TOutput> Received(TInput message) => new(message);
+    protected InitiatedBy<TInput, TOutput> InitiatedBy(TInput message) => new Events.InitiatedBy(message);
+    protected Received<TInput, TOutput> Received(TInput message) => new Events.Received(message);
     protected Replied<TInput, TOutput> Replied(TOutput message) => new(message);
     protected Sent<TInput, TOutput> Sent(TOutput message) => new(message);
     protected Published<TInput, TOutput> Published(TOutput message) => new(message);

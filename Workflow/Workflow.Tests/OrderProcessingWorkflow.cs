@@ -1,4 +1,6 @@
-﻿namespace Workflow.Tests;
+﻿using System.Diagnostics;
+
+namespace Workflow.Tests;
 
 public sealed class OrderProcessingWorkflow : Workflow<OrderProcessingInputMessage, OrderProcessingState, OrderProcessingOutputMessage>
 {
@@ -45,7 +47,7 @@ public sealed class OrderProcessingWorkflow : Workflow<OrderProcessingInputMessa
                 Send(new NotifyOrderPlaced(p.OrderId)),
                 Schedule(TimeSpan.FromMinutes(15), new PaymentTimeoutOutMessage(p.OrderId))
             ],
-
+            
             (PaymentReceivedInputMessage p, OrderCreated s) =>
             [
                 Send(new ShipOrder(p.OrderId))
@@ -73,6 +75,22 @@ public sealed class OrderProcessingWorkflow : Workflow<OrderProcessingInputMessa
                 Send(new NotifyOrderCancelled(s.OrderId, "Payment_Timeout")),
                 Complete()
             ],
+            
+            (CheckOrderStateInputMessage p, OrderProcessingState s) => [
+                Reply(new OrderProcessingStatus(
+                    p.OrderId,
+                    s switch
+                    {
+                        NoOrder => "NotExisting",
+                        OrderCreated => "OrderCreated",
+                        PaymentConfirmed => "PaymentConfirmed",
+                        Shipped => "Shipped",
+                        Delivered => "Delivered",
+                        Cancelled c => $"Cancelled: {c.Reason}",
+                        _ => "Unknown"
+                    }
+                ))
+            ],
 
             _ => throw new NotImplementedException()
         };
@@ -93,8 +111,7 @@ public record OrderCancelledInputMessage(string OrderId, string Reason) : OrderP
 
 public record PaymentTimeoutInputMessage(string OrderId) : OrderProcessingInputMessage;
 
-
-
+public record CheckOrderStateInputMessage(string OrderId) : OrderProcessingInputMessage;
 
 public record OrderProcessingOutputMessage;
 
@@ -108,13 +125,14 @@ public record NotifyOrderShipped(string OrderId, string TrackingNumber) : OrderP
 
 public record NotifyOrderDelivered(string OrderId) : OrderProcessingOutputMessage;
 
-public record NotifyOrderCancelled(string OrderId, string reason) : OrderProcessingOutputMessage;
+public record NotifyOrderCancelled(string OrderId, string Reason) : OrderProcessingOutputMessage;
 
 public record PaymentTimeoutOutMessage(string OrderId) : OrderProcessingOutputMessage;
 
-public record OrderProcessingState;
+public record OrderProcessingStatus(string OrderId, string Status) : OrderProcessingOutputMessage;
 
 
+public abstract record OrderProcessingState();
 
 public record NoOrder : OrderProcessingState;
 

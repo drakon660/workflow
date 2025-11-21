@@ -1,6 +1,6 @@
 # Order Processing Workflow - Requirements
 
-**Last Updated:** 2025-11-21
+**Last Updated:** 2025-11-21 (Added Reply command for queries)
 
 ---
 
@@ -17,6 +17,7 @@ A simple, linear workflow to test core workflow engine mechanics: **Decide**, **
 - Linear progression through states
 - Basic cancellation logic
 - Timeout with Schedule command
+- Query pattern with Reply command
 
 ---
 
@@ -101,6 +102,10 @@ Empty initial state
 ### 6. PaymentTimeout
 - OrderId (string)
 
+### 7. CheckOrderState
+- OrderId (string)
+- *Note: Query message - doesn't change state*
+
 ---
 
 ## Output Commands (Simplified)
@@ -128,6 +133,11 @@ Empty initial state
 ### 7. PaymentTimeout
 - OrderId (string)
 - *Note: This is scheduled and then received back as input*
+
+### 8. OrderProcessingStatus
+- OrderId (string)
+- Status (string)
+- *Note: Reply message for queries*
 
 ---
 
@@ -180,6 +190,18 @@ Empty initial state
 
 ---
 
+### When CheckOrderState (any state)
+**Generate:**
+1. Reply OrderProcessingStatus with current state
+   - NoOrder → Status: "NotExisting"
+   - OrderCreated → Status: "OrderCreated"
+   - PaymentConfirmed → Status: "PaymentConfirmed"
+   - Shipped → Status: "Shipped"
+   - Delivered → Status: "Delivered"
+   - Cancelled → Status: "Cancelled: {reason}"
+
+---
+
 ## State Transitions (Evolve Requirements)
 
 ### PlaceOrder → OrderCreated
@@ -205,7 +227,9 @@ Empty initial state
 - Sent
 - Scheduled
 - Published
+- Replied
 - Completed
+- Received(CheckOrderState) - Query events don't mutate state
 
 ---
 
@@ -267,6 +291,7 @@ Empty initial state
 - (CancelOrder, OrderCreated) → [Send NotifyOrderCancelled, Complete]
 - (PaymentTimeout, OrderCreated) → [Send NotifyOrderCancelled, Complete]
 - (CancelOrder, PaymentConfirmed) → []
+- (CheckOrderState, any state) → [Reply OrderProcessingStatus]
 
 ---
 
@@ -289,14 +314,39 @@ Empty initial state
 
 ---
 
+### Test 8: Query with Reply
+**Flow:**
+1. PlaceOrder → OrderCreated
+2. CheckOrderState → Reply with OrderProcessingStatus("OrderCreated")
+3. State remains OrderCreated (unchanged)
+
+**Verify:**
+- Reply command generated with correct status
+- State unchanged after query
+- Events: Received(CheckOrderState), Replied(OrderProcessingStatus)
+
+---
+
+### Test 9: Reply in Different States
+**Verify Reply returns correct status for each state:**
+- CheckOrderState in NoOrder → Status: "NotExisting"
+- CheckOrderState in OrderCreated → Status: "OrderCreated"
+- CheckOrderState in PaymentConfirmed → Status: "PaymentConfirmed"
+- CheckOrderState in Shipped → Status: "Shipped"
+- CheckOrderState in Delivered → Status: "Delivered"
+- CheckOrderState in Cancelled → Status: "Cancelled: {reason}"
+
+---
+
 ## Success Criteria
 
 ✅ All 6 states implemented (minimal properties)
-✅ All 6 input messages implemented (minimal properties)
-✅ All 7 output commands implemented (minimal properties)
-✅ Decide method generates correct commands
+✅ All 7 input messages implemented (minimal properties)
+✅ All 8 output messages implemented (minimal properties)
+✅ Decide method generates correct commands (including Reply)
 ✅ Evolve method performs correct state transitions
-✅ All 7 test scenarios pass
+✅ Reply command doesn't change state
+✅ All 9 test scenarios pass
 ✅ Focus on testing workflow mechanics, not business logic
 
 ---
@@ -326,6 +376,7 @@ Empty initial state
 
 ---
 
-**Status:** Simplified Requirements - Ready for Implementation
+**Status:** Simplified Requirements - Implementation In Progress
 **Estimated Effort:** 1-2 hours
 **Purpose:** Test Decide, Evolve, Translate methods with minimal complexity
+**Latest Addition:** Reply command for querying workflow state

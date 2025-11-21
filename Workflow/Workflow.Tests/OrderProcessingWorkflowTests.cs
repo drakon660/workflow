@@ -25,4 +25,23 @@ public class OrderProcessingWorkflowTests
         // Check commands generated
         result.Commands.Count.Should().Be(3);
     }
+    
+    [Fact]
+    public void CheckOrderState_WhenOrderCreated_ShouldReplyWithStatus()
+    {
+        // Arrange
+        var workflow = new OrderProcessingWorkflow();
+        var state = new OrderCreated("order-123");
+        var input = new CheckOrderStateInputMessage("order-123");
+
+        // Act
+        var commands = workflow.Decide(input, state);
+
+        // Assert
+        commands.Should().HaveCount(1);
+        var reply = commands[0].Should().BeOfType<Reply<OrderProcessingOutputMessage>>().Subject;
+        var status = reply.Message.Should().BeOfType<OrderProcessingStatus>().Subject;
+        status.OrderId.Should().Be("order-123");
+        status.Status.Should().Be("OrderCreated");
+    }
 }

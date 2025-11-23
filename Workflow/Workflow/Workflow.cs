@@ -1,6 +1,6 @@
 ﻿namespace Workflow;
 
-public abstract class Workflow<TInput, TState, TOutput> : IWorkflow<TInput, TState, TOutput>
+public abstract class WorkflowBase<TInput, TState, TOutput> 
 {
     public abstract TState InitialState { get; }
     
@@ -24,21 +24,20 @@ public abstract class Workflow<TInput, TState, TOutput> : IWorkflow<TInput, TSta
 
     protected abstract TState InternalEvolve(TState state, WorkflowEvent<TInput, TOutput> workflowEvent);
 
+    // Helper class for pattern matching - uses type aliases to base types
     protected static class Events
     {
-        public record Received(TInput Message)
-            : Received<TInput, TOutput>(Message);
-
-        public record InitiatedBy(TInput Message)
-            : InitiatedBy<TInput, TOutput>(Message);
+        // These are ALIASES to the base types, not derived types
+        // This allows pattern matching with Events.Received while actual instances are base types
+        public static Received<TInput, TOutput> Received(TInput message) => new(message);
+        public static InitiatedBy<TInput, TOutput> InitiatedBy(TInput message) => new(message);
     }
-    
-    public abstract IReadOnlyList<WorkflowCommand<TOutput>> Decide(TInput input, TState state);
 
     // Helper methods for creating workflow events (shortcuts to avoid verbose constructors)
+    // These create base types to ensure type assertions work in tests
     protected Began<TInput, TOutput> Began() => new();
-    protected InitiatedBy<TInput, TOutput> InitiatedBy(TInput message) => new Events.InitiatedBy(message);
-    protected Received<TInput, TOutput> Received(TInput message) => new Events.Received(message);
+    protected InitiatedBy<TInput, TOutput> InitiatedBy(TInput message) => new(message);
+    protected Received<TInput, TOutput> Received(TInput message) => new(message);
     protected Replied<TInput, TOutput> Replied(TOutput message) => new(message);
     protected Sent<TInput, TOutput> Sent(TOutput message) => new(message);
     protected Published<TInput, TOutput> Published(TOutput message) => new(message);
@@ -84,4 +83,36 @@ public abstract class Workflow<TInput, TState, TOutput> : IWorkflow<TInput, TSta
 
         return events;
     }
+}
+
+public abstract class Workflow<TInput, TState, TOutput> : WorkflowBase<TInput, TState, TOutput>, IWorkflow<TInput, TState, TOutput>
+{
+    public abstract IReadOnlyList<WorkflowCommand<TOutput>> Decide(TInput input, TState state);
+}
+
+public abstract class AsyncWorkflow<TInput, TState, TOutput, TContext> : WorkflowBase<TInput, TState, TOutput>, IAsyncWorkflow<TInput, TState, TOutput, TContext>
+{
+    public abstract Task<IReadOnlyList<WorkflowCommand<TOutput>>> DecideAsync(TInput input, TState state, TContext service);
+}
+
+public interface IAsyncWorkflow<TInput, TState, TOutput, TContext> : IWorkflowBase<TInput, TState, TOutput>
+{
+    Task<IReadOnlyList<WorkflowCommand<TOutput>>> DecideAsync(TInput input, TState state, TContext service);
+}
+
+public interface IWorkflow<TInput, TState, TOutput> : IWorkflowBase<TInput, TState, TOutput>
+{
+    IReadOnlyList<WorkflowCommand<TOutput>> Decide(TInput input, TState state);
+}
+
+public interface IWorkflowBase<TInput, TState, TOutput>
+{
+    TState InitialState { get; }
+
+    TState Evolve(TState state, WorkflowEvent<TInput, TOutput> workflowEvent);
+    
+    IReadOnlyList<WorkflowEvent<TInput, TOutput>> Translate(
+        bool begins,
+        TInput message,
+        IReadOnlyList<WorkflowCommand<TOutput>> commands);
 }

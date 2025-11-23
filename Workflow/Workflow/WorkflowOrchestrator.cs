@@ -58,3 +58,52 @@ public class WorkflowOrchestrator<TInput, TState, TOutput>
         );
     }
 }
+
+public class AsyncWorkflowOrchestrator<TInput, TState, TOutput, TContext>
+{
+    public async Task<OrchestrationResult<TInput, TState, TOutput>> RunAsync(IAsyncWorkflow<TInput, TState, TOutput, TContext> workflow,
+        WorkflowSnapshot<TInput, TState, TOutput> snapshot,
+        TInput message,
+        TContext context,
+        bool begins = false)
+    {
+        // (a) Call Decide to determine what commands to execute
+        var commands = await workflow.DecideAsync(message, snapshot.State, context);
+
+        // (b) Translate commands into events
+        var newEvents = workflow.Translate(begins, message, commands);
+
+        // (c) Append translated events to event history
+        var updatedEventHistory = snapshot.EventHistory
+            .Concat(newEvents)
+            .ToList();
+
+        // (d) Evolve state by applying new events
+        var newState = snapshot.State;
+        foreach (var evt in newEvents)
+        {
+            newState = workflow.Evolve(newState, evt);
+        }
+
+        // (e) Create new snapshot ready for persistence
+        var newSnapshot = new WorkflowSnapshot<TInput, TState, TOutput>(
+            newState,
+            updatedEventHistory
+        );
+
+        return new OrchestrationResult<TInput, TState, TOutput>(
+            newSnapshot,
+            commands,
+            newEvents
+        );
+    }
+    
+    public WorkflowSnapshot<TInput, TState, TOutput> CreateInitialSnapshot(
+        IWorkflow<TInput, TState, TOutput> workflow)
+    {
+        return new WorkflowSnapshot<TInput, TState, TOutput>(
+            workflow.InitialState,
+            []
+        );
+    }
+}

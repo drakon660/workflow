@@ -1,4 +1,8 @@
-﻿namespace Workflow.Tests;
+﻿// Type aliases for cleaner pattern matching
+using InitiatedBy = Workflow.InitiatedBy<Workflow.Tests.OrderProcessingInputMessage, Workflow.Tests.OrderProcessingOutputMessage>;
+using Received = Workflow.Received<Workflow.Tests.OrderProcessingInputMessage, Workflow.Tests.OrderProcessingOutputMessage>;
+
+namespace Workflow.Tests;
 
 public sealed class OrderProcessingWorkflow : Workflow<OrderProcessingInputMessage, OrderProcessingState, OrderProcessingOutputMessage>
 {
@@ -8,28 +12,24 @@ public sealed class OrderProcessingWorkflow : Workflow<OrderProcessingInputMessa
     {
         return (state, workflowEvent) switch
         {
-            (NoOrder n, Events.InitiatedBy
-                {
-                    Message: PlaceOrderInputMessage m
-                })
+            (NoOrder n, InitiatedBy { Message: PlaceOrderInputMessage m })
                 => new OrderCreated(m.OrderId),
-            
-            (OrderCreated s, Events.Received { Message: PaymentReceivedInputMessage m }) => new PaymentConfirmed(m.OrderId),
-            
-            (PaymentConfirmed s, Events.Received { Message: OrderShippedInputMessage m }) =>
-                new Shipped(m.OrderId,  m.TrackingNumber),
-            
-            (Shipped s, Events.Received
-                {
-                    Message: OrderDeliveredInputMessage m
-                }) => new Delivered(m.OrderId, s.TrackingNumber),
-            
-            (OrderCreated s, Events.Received  {  Message: OrderCancelledInputMessage m }) =>
-                new Cancelled(m.OrderId, m.Reason),
-            
-            (OrderCreated s, Events.Received  {  Message: PaymentTimeoutInputMessage m }) =>
-                new Cancelled(m.OrderId, "Payment_Timeout"),
-            
+
+            (OrderCreated s, Received { Message: PaymentReceivedInputMessage m })
+                => new PaymentConfirmed(m.OrderId),
+
+            (PaymentConfirmed s, Received { Message: OrderShippedInputMessage m })
+                => new Shipped(m.OrderId,  m.TrackingNumber),
+
+            (Shipped s, Received { Message: OrderDeliveredInputMessage m })
+                => new Delivered(m.OrderId, s.TrackingNumber),
+
+            (OrderCreated s, Received { Message: OrderCancelledInputMessage m })
+                => new Cancelled(m.OrderId, m.Reason),
+
+            (OrderCreated s, Received { Message: PaymentTimeoutInputMessage m })
+                => new Cancelled(m.OrderId, "Payment_Timeout"),
+
             _ => state
         };
     }

@@ -4,6 +4,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Workflow", "Workflow\Workfl
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Workflow.Tests", "Workflow.Tests\Workflow.Tests.csproj", "{5FEDE652-5457-4582-B9BE-DD3C4E8705FE}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WorkflowWolverineSingle", "WorkflowWolverineSingle\WorkflowWolverineSingle.csproj", "{9AE93AB6-1880-44BA-ACB2-CB9A44DCE091}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Workflow.Samples", "Workflow.Samples\Workflow.Samples.csproj", "{277DAF2E-6E27-4765-BEC0-A8A73CEE6E2A}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -18,5 +22,13 @@ Global
 		{5FEDE652-5457-4582-B9BE-DD3C4E8705FE}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{5FEDE652-5457-4582-B9BE-DD3C4E8705FE}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{5FEDE652-5457-4582-B9BE-DD3C4E8705FE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9AE93AB6-1880-44BA-ACB2-CB9A44DCE091}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9AE93AB6-1880-44BA-ACB2-CB9A44DCE091}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9AE93AB6-1880-44BA-ACB2-CB9A44DCE091}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9AE93AB6-1880-44BA-ACB2-CB9A44DCE091}.Release|Any CPU.Build.0 = Release|Any CPU
+		{277DAF2E-6E27-4765-BEC0-A8A73CEE6E2A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{277DAF2E-6E27-4765-BEC0-A8A73CEE6E2A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{277DAF2E-6E27-4765-BEC0-A8A73CEE6E2A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{277DAF2E-6E27-4765-BEC0-A8A73CEE6E2A}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

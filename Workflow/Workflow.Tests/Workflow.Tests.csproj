@@ -33,6 +33,7 @@
     </ItemGroup>
 
     <ItemGroup>
+      <ProjectReference Include="..\Workflow.Samples\Workflow.Samples.csproj" />
       <ProjectReference Include="..\Workflow\Workflow.csproj" />
     </ItemGroup>
 

@@ -1,6 +1,8 @@
 # Workflow Stream Architecture
 
-**Last Updated:** 2025-11-21
+**Last Updated:** 2025-11-23
+
+**Architecture Decision:** WorkflowStreamProcessor and WorkflowOutputProcessor have been removed. Infrastructure concerns (message routing, command execution, background processing) are delegated to Wolverine. This architecture document now focuses on the core workflow orchestration pattern.
 
 ---
 
@@ -104,40 +106,36 @@ Task MarkCommandProcessedAsync(string workflowId, long position);
 
 ### High-Level Flow
 
+**Note:** WorkflowStreamProcessor and WorkflowOutputProcessor have been removed. Infrastructure is now handled by Wolverine (see WOLVERINE_HYBRID_ARCHITECTURE.md).
+
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│ 1. Input Arrives (from external source)                         │
-│    - HTTP request, Pub/Sub message, scheduled event, etc.       │
+│ 1. Input Message (from HTTP/Queue/Kafka/etc.)                   │
+│    PlaceOrder, PaymentReceived, CancelOrder, etc.               │
+│    → Routed by Wolverine to workflow message handlers           │
 └────────────────────────────────┬────────────────────────────────┘
                                  │
                                  ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│ 2. WorkflowInputRouter (TODO)                                    │
-│    - Calls GetWorkflowId to determine routing                    │
-│    - Stores input in workflow stream                             │
+│ 2. Wolverine Message Handler                                     │
+│    - Receives message from Wolverine                             │
+│    - Determines workflow ID                                      │
+│    - Loads workflow state from persistence                       │
+│    - Calls WorkflowOrchestrator                                  │
 └────────────────────────────────┬────────────────────────────────┘
                                  │
                                  ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│ 3. WorkflowStreamConsumer (TODO)                                 │
-│    - Subscribes to workflow streams                              │
-│    - Detects new messages                                        │
-│    - Triggers WorkflowStreamProcessor                            │
+│ 3. WorkflowOrchestrator (Pure Business Logic)                   │
+│    - Rebuilds state from events                                 │
+│    - Calls Decide → Commands                                    │
+│    - Calls Translate → Events                                   │
+│    - Returns result with commands + events + snapshot           │
 └────────────────────────────────┬────────────────────────────────┘
                                  │
                                  ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│ 4. WorkflowStreamProcessor                                       │
-│    - Reads stream (fromPosition)                                 │
-│    - Rebuilds state from events                                  │
-│    - Calls Decide → Commands                                     │
-│    - Calls Translate → Events                                    │
-│    - Stores commands + events in stream                          │
-└────────────────────────────────┬────────────────────────────────┘
-                                 │
-                                 ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ 5. IWorkflowPersistence (Stream Storage)                         │
+│ 4. IWorkflowPersistence (Stream Storage)                         │
 │    - PostgreSQL, EventStoreDB, SQLite, etc.                      │
 │    - AppendAsync(workflowId, messages)                           │
 │    - ReadStreamAsync(workflowId)                                 │
@@ -147,20 +145,11 @@ Task MarkCommandProcessedAsync(string workflowId, long position);
                                  │
                                  ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│ 6. WorkflowOutputProcessor (Background Service)                  │
-│    - Polls for pending commands (Processed=false)                │
-│    - Executes via ICommandExecutor                               │
-│    - Marks as processed                                          │
-└────────────────────────────────┬────────────────────────────────┘
-                                 │
-                                 ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ 7. ICommandExecutor                                              │
-│    - Sends to message bus (Send)                                 │
-│    - Publishes events (Publish)                                  │
-│    - Schedules delayed messages (Schedule)                       │
-│    - Sends replies (Reply)                                       │
-│    - Marks workflow complete (Complete)                          │
+│ 5. Wolverine Infrastructure                                      │
+│    - Executes commands (Send/Publish/Schedule/Reply/Complete)   │
+│    - Background polling for pending commands                     │
+│    - Marks commands as processed after execution                 │
+│    - Retry logic and error handling                              │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -175,100 +164,54 @@ Task MarkCommandProcessedAsync(string workflowId, long position);
 - Manage snapshots
 - Pure business logic (easy testing)
 
-**Status:** Fully implemented and tested (47 tests)
+**Status:** Fully implemented and tested (46 tests passing)
 
-#### 2. WorkflowStreamProcessor ✅ (Needs Refactoring)
-**Purpose:** Adds persistence layer to pure WorkflowOrchestrator
+**Key Features:**
+- Synchronous workflows via `Workflow<TInput, TState, TOutput>`
+- Asynchronous workflows via `AsyncWorkflow<TInput, TState, TOutput, TContext>`
+- Type-safe context objects for async operations
+- Helper methods for cleaner pattern matching
 
-**Current Responsibilities:**
-1. ~~Store input in stream~~ ← Should be done by InputRouter
-2. **Rebuild state** from all events in stream ✅
-3. **Process via Orchestrator** (pure business logic) ✅
-4. **Store outputs** (commands + events) in stream ✅
-5. **Return result** with updated snapshot ✅
+#### 2. IWorkflowPersistence ✅
+**Purpose:** Stream storage abstraction
 
-**Refactoring Needed:**
-- Remove input persistence (router's job)
-- Change signature to accept `fromPosition` instead of message
+**Responsibilities:**
+1. **Store messages** in workflow streams (AppendAsync)
+2. **Read stream** for state reconstruction (ReadStreamAsync)
+3. **Query pending commands** for background processing (GetPendingCommandsAsync)
+4. **Track command execution** with Processed flag (MarkCommandProcessedAsync)
+
+**Implementation Status:**
+- ✅ Interface defined
+- ✅ In-memory implementation for testing
+- ⏳ PostgreSQL/SQLite implementations (future)
 - Keep output persistence and state rebuilding
 
-#### 3. WorkflowInputRouter ⏳ (TODO)
-**Purpose:** Routes messages from source streams to workflow instance streams
+#### 3. Wolverine Infrastructure ⏳ (In Progress)
+**Purpose:** Handles all infrastructure concerns (routing, execution, background processing)
 
 **Responsibilities:**
-1. Subscribes to source streams (e.g., `GuestCheckout` stream, `Orders` stream)
-2. Filters for messages the workflow cares about
-3. Calls `GetWorkflowId(message)` to determine workflow instance
-4. Stores the message in the workflow's stream as an Input message
+1. **Message Routing**: Route incoming messages to workflow handlers
+2. **Command Execution**: Execute Send/Publish/Schedule/Reply/Complete commands
+3. **Background Processing**: Poll for pending commands and execute them
+4. **Retry Logic**: Handle transient failures with retries
+5. **Error Handling**: Dead letter queue for permanent failures
 
-**Example:**
-```csharp
-// Event arrives: GuestCheckedOut { guestId: "g1", groupCheckoutId: "group-123" }
-// Router calls: GetWorkflowId(event) → returns "group-123"
-// Router stores in: workflow-group-123 stream
-```
+**See:** WOLVERINE_HYBRID_ARCHITECTURE.md for detailed integration plan
 
-**Why Router Persists Inputs:**
-- Creates the durable "inbox"
-- Message is persisted BEFORE processing
-- Ensures we never lose a message even if processing fails
+**Key Benefits:**
+- ✅ Production-ready messaging infrastructure
+- ✅ Built-in retry and error handling
+- ✅ Persistence integration
+- ✅ Observability and metrics
+- ✅ Avoids reinventing infrastructure
 
-#### 4. WorkflowStreamConsumer ⏳ (TODO)
-**Purpose:** Processes messages from workflow instance streams
-
-**Responsibilities:**
-1. Subscribes to workflow instance streams (pattern: `workflow-*`)
-2. Detects new messages in the workflow stream
-3. Triggers processing:
-   - Calls `WorkflowStreamProcessor.ProcessAsync(workflow, workflowId, fromPosition)`
-4. Tracks checkpoint (position in stream) for exactly-once processing
-
-**Example:**
-```csharp
-// New message appears at position 6 in workflow-group-123 stream
-// Consumer reads positions 1-6
-// Consumer triggers: rebuild state → decide → store outputs
-// Consumer saves checkpoint: 6
-```
-
-**What's Missing:**
-Currently, `WorkflowStreamProcessor` does the processing logic but **there's no consumer infrastructure** that:
-- ✗ Subscribes to streams automatically
-- ✗ Polls for new messages
-- ✗ Manages checkpoints
-- ✗ Handles retries/errors
-- ✗ Provides at-least-once/exactly-once delivery
-
-**The consumer is the background service that makes workflows event-driven** rather than manually triggered.
-
-#### 5. WorkflowOutputProcessor ✅
-**Purpose:** Background service that executes commands
-
-**Responsibilities:**
-1. **Poll** for pending commands (`GetPendingCommandsAsync()`)
-2. **Execute** via `ICommandExecutor`
-3. **Mark as processed** (`MarkCommandProcessedAsync()`)
-4. **Retry** on failure (with error handling)
-
-**Usage:**
-```csharp
-var executor = new CompositeCommandExecutor(messageBus, scheduler);
-var processor = new WorkflowOutputProcessor(persistence, executor);
-
-// Run as background service
-await processor.RunAsync(cancellationToken);
-
-// Or process one batch
-await processor.ProcessBatchAsync();
-```
-
-**Crash Recovery:**
-- If processor crashes after storing commands but before execution
-- On restart, `GetPendingCommandsAsync()` returns unprocessed commands
-- Commands are re-executed (must be idempotent!)
-
-#### 6. ICommandExecutor ✅
-**Purpose:** Abstraction for executing different command types
+**What Replaced:**
+- WorkflowInputRouter → Wolverine message routing
+- WorkflowStreamConsumer → Wolverine message handlers
+- WorkflowStreamProcessor → Wolverine handlers + WorkflowOrchestrator
+- WorkflowOutputProcessor → Wolverine background polling
+- ICommandExecutor → Wolverine message publishing
 
 ```csharp
 public interface ICommandExecutor<TOutput>
@@ -316,20 +259,21 @@ Source Stream → Consumer → Workflow Processor → Workflow Stream
 
 ### Component Responsibilities
 
+**Note:** Table updated to reflect Wolverine integration. WorkflowStreamProcessor and WorkflowOutputProcessor are replaced by Wolverine infrastructure.
+
 | Component | Subscribes To | Persists | Reads | Other Responsibilities |
 |-----------|---------------|----------|-------|----------------------|
-| **InputRouter** | Source streams | Inputs ✓ | - | Routes via GetWorkflowId |
-| **WorkflowStreamConsumer** | Workflow streams | - | - | Triggers processing, manages checkpoints |
-| **WorkflowStreamProcessor** | - | Outputs ✓ | All messages ✓ | Rebuilds state, calls decide/translate |
-| **WorkflowOutputProcessor** | - | Processed flag ✓ | Pending commands ✓ | Executes commands via ICommandExecutor |
+| **Wolverine Handler** | Message bus | Inputs ✓ | Stream messages ✓ | Routes via message handlers |
+| **WorkflowOrchestrator** | - | Outputs ✓ (via persistence) | All events ✓ | Rebuilds state, calls decide/translate |
+| **Wolverine Background** | - | Processed flag ✓ | Pending commands ✓ | Executes commands, retry logic |
 
 ### Key Principles
 
-1. **Input persistence happens at the edge** (router), not during processing
-2. **Processor assumes inputs are already in the stream** when triggered
-3. **Processor reads entire stream** to rebuild state, then processes from trigger position
-4. **Output persistence happens in processor** before execution
-5. **Consumer is the glue** that makes everything reactive and event-driven
+1. **Input persistence happens in Wolverine handlers** before workflow processing
+2. **Orchestrator assumes inputs are available** from persistence layer
+3. **Orchestrator reads entire stream** to rebuild state, then processes current message
+4. **Output persistence happens in orchestrator** before returning to Wolverine
+5. **Wolverine provides infrastructure** for routing, execution, retries, and error handling
 
 ### Two Consumer Roles
 
@@ -475,8 +419,9 @@ var message = new InitiateGroupCheckout(
 );
 ```
 
-**2. WorkflowStreamProcessor Stores Input** (Will move to Router)
+**2. Wolverine Handler Stores Input**
 ```csharp
+// Wolverine handler receives message and stores to workflow stream
 // Appends to stream "group-checkout-123"
 WorkflowMessage {
     WorkflowId: "group-checkout-123",
@@ -532,9 +477,9 @@ WorkflowMessage {
 // ... more events
 ```
 
-**7. Background Processor Polls**
+**7. Wolverine Background Processor Polls**
 ```csharp
-// WorkflowOutputProcessor runs in background
+// Wolverine background service polls for pending commands
 var pending = await persistence.GetPendingCommandsAsync();
 // Returns positions 2 and 3 (Processed=false)
 ```
@@ -660,7 +605,7 @@ public record CheckoutStatus(
 1. **Separation of Concerns**
    - `Workflow` - Pure business logic (Decide, Evolve)
    - `WorkflowOrchestrator` - Pure orchestration (no I/O)
-   - `WorkflowStreamProcessor` - Adds persistence (I/O)
+   - `Wolverine` - Infrastructure (routing, persistence, execution)
    - Benefits: Easy testing, clear boundaries
 
 2. **Immutable State**
@@ -708,88 +653,99 @@ public record CheckoutStatus(
 
 ### Completed ✅
 - ✅ WorkflowOrchestrator (pure business logic)
-- ✅ WorkflowStreamProcessor (needs refactoring - remove input persistence)
-- ✅ WorkflowOutputProcessor (correct as-is)
+- ✅ Workflow base classes (Workflow and AsyncWorkflow)
 - ✅ InMemoryWorkflowPersistence (complete with tests)
 - ✅ WorkflowMessage abstraction
 - ✅ IWorkflowPersistence interface
-- ✅ All 47 tests passing
+- ✅ All 46 tests passing
+
+### Architecture Decision ⚙️
+- ⚙️ **Removed**: WorkflowStreamProcessor, WorkflowOutputProcessor
+- ⚙️ **Replaced by**: Wolverine infrastructure (see WOLVERINE_HYBRID_ARCHITECTURE.md)
+- ⚙️ **Reason**: Avoid reinventing infrastructure; use production-ready Wolverine for routing, execution, retries
 
 ### In Progress ⏳
-- ⏳ WorkflowInputRouter (needs implementation)
-- ⏳ WorkflowStreamConsumer (needs implementation)
-- ⏳ Refactor WorkflowStreamProcessor (remove input persistence, accept fromPosition)
+- ⏳ Wolverine integration (message handlers, command execution)
+- ⏳ Concrete persistence (PostgreSQL, SQLite)
 
-### Not Started
-- ⏳ Concrete persistence (PostgreSQL, SQLite, EventStoreDB)
-- ⏳ Background processor hosting (ASP.NET BackgroundService)
-- ⏳ Workflow ID routing (`GetWorkflowId()` method)
+### Future Work
+- ⏳ Workflow ID routing strategies
 - ⏳ Concurrency control (optimistic locking)
 - ⏳ Checkpoint management (exactly-once semantics)
 - ⏳ Metrics/telemetry (OpenTelemetry)
-- ⏳ Error handling (DLQ, retries, circuit breakers)
 - ⏳ Workflow versioning
 
 ---
 
 ## Next Steps
 
+**Note:** Next steps updated to reflect Wolverine integration strategy.
+
 ### Immediate Priority
 
-1. **Create WorkflowInputRouter**
-   - Subscribe to source streams
-   - Implement `GetWorkflowId` routing logic
-   - Persist inputs to workflow streams
+1. **Wolverine Integration**
+   - Create Wolverine message handlers for workflows
+   - Implement command execution via Wolverine
+   - Set up background polling for pending commands
+   - See: WOLVERINE_HYBRID_ARCHITECTURE.md
 
-2. **Create WorkflowStreamConsumer**
-   - Subscribe to workflow instance streams
-   - Detect new messages
-   - Trigger `WorkflowStreamProcessor` with position
-   - Manage checkpoints
-
-3. **Refactor WorkflowStreamProcessor**
-   - Remove input persistence
-   - Change signature to accept `fromPosition` instead of message
-   - Keep output persistence
-   - Keep state rebuilding from persistence
+2. **Concrete Persistence**
+   - PostgreSQL implementation of IWorkflowPersistence
+   - SQLite implementation for local development
+   - Marten integration (optional, for EventStoreDB-like features)
 
 ### Phase 2
 
-4. Implement concrete persistence (PostgreSQL, SQLite)
-5. Implement background processor hosting
-6. Add workflow ID routing
-7. Add concurrency control
+3. **Production Features**
+   - Workflow ID routing strategies
+   - Concurrency control (optimistic locking)
+   - Error handling and retry policies (via Wolverine)
+   - Metrics and observability (OpenTelemetry)
 
 ### Phase 3
 
-8. Add production features (metrics, error handling, versioning)
+4. **Advanced Features**
+   - Workflow versioning
+   - Long-running workflow support
+   - Saga pattern implementations
 
 ---
 
 ## File Organization
 
+**Note:** Updated to reflect removal of WorkflowStreamProcessor and WorkflowOutputProcessor.
+
 ```
 Workflow/
 ├── Workflow/                          # Core framework library
-│   ├── Workflow.cs                    # Base workflow class
+│   ├── Workflow.cs                    # Base workflow classes (Workflow, AsyncWorkflow)
+│   ├── IWorkflow.cs                   # Workflow interfaces
 │   ├── WorkflowOrchestrator.cs        # Pure orchestrator
 │   ├── WorkflowCommand.cs             # Command types (Send, Reply, etc.)
 │   ├── WorkflowEvent.cs               # Event types (Began, Received, etc.)
 │   ├── WorkflowMessage.cs             # Unified stream message
 │   ├── IWorkflowPersistence.cs        # Persistence abstraction
-│   ├── InMemoryWorkflowPersistence.cs # In-memory implementation
-│   ├── WorkflowStreamProcessor.cs     # Stream processor (needs refactor)
-│   └── WorkflowOutputProcessor.cs     # Command executor
+│   └── InMemoryWorkflowPersistence.cs # In-memory implementation
 │
-├── Workflow.Tests/                    # Tests
-│   ├── GroupCheckoutWorkflow.cs       # Domain implementation
+├── Workflow.Samples/                  # Sample workflows
+│   ├── OrderProcessingWorkflow.cs     # Order processing example
+│   └── GroupCheckoutWorkflow.cs       # Group checkout example
+│
+├── Workflow.Tests/                    # Tests (46 passing)
 │   ├── GroupCheckoutWorkflowTests.cs  # 18 tests
+│   ├── OrderProcessingWorkflowTests.cs # 28 tests
 │   ├── WorkflowOrchestratorTests.cs   # Orchestrator tests
 │   └── InMemoryWorkflowPersistenceTests.cs # Persistence tests
+│
+├── WorkflowWolverineSingle/           # Wolverine integration (in progress)
+│   ├── Program.cs                     # Wolverine setup
+│   ├── CreateCustomerHandler.cs       # Example handler
+│   └── BpPublisher.cs                 # Publisher example
 │
 └── ChatStates/                        # Documentation
     ├── ARCHITECTURE.md                # This file
     ├── PATTERNS.md                    # Reliability and Reply patterns
+    ├── WOLVERINE_HYBRID_ARCHITECTURE.md # Wolverine integration plan
     └── IMPLEMENTATION_STATE.md        # Current implementation status
 ```
 
@@ -797,18 +753,20 @@ Workflow/
 
 ## RFC Compliance
 
+**Note:** Implementation strategy updated to use Wolverine for infrastructure.
+
 | RFC Requirement | Status | Implementation |
 |----------------|--------|----------------|
-| Store inputs in workflow stream | ✅ | WorkflowStreamProcessor (moving to Router) |
-| Rebuild state from events | ✅ | RebuildStateFromStream() |
-| Store outputs in workflow stream | ✅ | AppendAsync(outputMessages) |
-| Commands need execution | ✅ | WorkflowOutputProcessor |
-| Mark commands as processed | ✅ | MarkCommandProcessedAsync() |
+| Store inputs in workflow stream | ✅ | Wolverine handlers + IWorkflowPersistence |
+| Rebuild state from events | ✅ | WorkflowOrchestrator.RebuildStateFromStream() |
+| Store outputs in workflow stream | ✅ | IWorkflowPersistence.AppendAsync() |
+| Commands need execution | ✅ | Wolverine background processing |
+| Mark commands as processed | ✅ | IWorkflowPersistence.MarkCommandProcessedAsync() |
 | Workflow stream as inbox + outbox | ✅ | WorkflowMessage with Direction |
 | Position tracking | ✅ | WorkflowMessage.Position |
 | Message kind (Command/Event) | ✅ | WorkflowMessage.Kind |
 
-**Alignment:** 100% ✅
+**Alignment:** 100% ✅ (infrastructure delegated to Wolverine)
 
 ---
 

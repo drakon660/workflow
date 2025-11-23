@@ -1,6 +1,8 @@
 # Workflow Implementation State
 
-**Last Updated:** 2025-11-17
+**Last Updated:** 2025-11-23
+
+**Architecture Update:** WorkflowStreamProcessor and WorkflowOutputProcessor have been removed. Infrastructure is now delegated to Wolverine (see WOLVERINE_HYBRID_ARCHITECTURE.md).
 
 ---
 
@@ -19,15 +21,27 @@ We have successfully implemented the core workflow orchestration framework with 
 - Decide → Translate → Evolve cycle
 - Event history tracking
 - Snapshot management
-- Fully tested with 47 passing tests
+- Fully tested with 46 passing tests
 
 #### **Workflow Abstractions** ✅
 ```csharp
-public abstract class Workflow<TInput, TState, TOutput>
+// Base class with shared functionality
+public abstract class WorkflowBase<TInput, TState, TOutput>
 {
     public abstract TState InitialState { get; }
     protected abstract TState InternalEvolve(TState state, WorkflowEvent<TInput, TOutput> workflowEvent);
+}
+
+// Synchronous workflows
+public abstract class Workflow<TInput, TState, TOutput> : WorkflowBase<TInput, TState, TOutput>
+{
     public abstract IReadOnlyList<WorkflowCommand<TOutput>> Decide(TInput input, TState state);
+}
+
+// Asynchronous workflows with typed context
+public abstract class AsyncWorkflow<TInput, TState, TOutput, TContext> : WorkflowBase<TInput, TState, TOutput>
+{
+    public abstract Task<IReadOnlyList<WorkflowCommand<TOutput>>> DecideAsync(TInput input, TState state, TContext context);
 }
 ```
 
@@ -144,39 +158,39 @@ End-to-end workflow scenarios:
 
 ## What's NOT Yet Implemented ⏳
 
-### 1. Consumer/Router Architecture (See CONSUMER_AND_PERSISTENCE_DISCUSSION.md)
+### 1. Infrastructure Layer (Delegated to Wolverine)
 
-**Missing Components:**
-- `WorkflowInputRouter` - Routes messages to workflow streams
-- `WorkflowStreamConsumer` - Subscribes to workflow streams, triggers processing
-- Refactored `WorkflowStreamProcessor` - Should not persist inputs
+**Architecture Decision (2025-11-23):**
+- ❌ Removed WorkflowStreamProcessor and WorkflowOutputProcessor
+- ✅ Using Wolverine for all infrastructure concerns
+- 📝 See WOLVERINE_HYBRID_ARCHITECTURE.md for integration plan
 
-**Current Issue:**
-- `WorkflowStreamProcessor` currently does both input AND output persistence
-- Should be refactored per architectural discussion
+**What Wolverine Provides:**
+- Message routing to workflow handlers
+- Command execution (Send/Publish/Schedule/Reply)
+- Background processing and polling
+- Retry logic and error handling
+- Dead letter queue for failures
+
+**What We Still Need to Build:**
+- Wolverine message handlers for workflows
+- Integration between Wolverine and WorkflowOrchestrator
+- Background polling service for pending commands
 
 ### 2. Concrete Persistence Implementations
 
 **Needed:**
-- PostgreSQLPersistence (production)
-- SQLitePersistence (local dev)
-- EventStoreDB implementation (optional)
+- PostgreSQL implementation of IWorkflowPersistence
+- SQLite implementation for local development
+- Marten integration (optional, for EventStoreDB-like features)
 
-### 3. Background Processing
-
-**Missing:**
-- `WorkflowOutputProcessor` background service host
-- ASP.NET BackgroundService integration
-- Polling/push mechanisms for command execution
-
-### 4. Production Features
+### 3. Production Features
 
 **Missing:**
-- Workflow ID routing (`GetWorkflowId()` method)
+- Workflow ID routing strategies
 - Concurrency control (optimistic locking)
 - Checkpoint management (exactly-once semantics)
-- Metrics/telemetry (OpenTelemetry)
-- Error handling (DLQ, retries, circuit breakers)
+- Metrics/telemetry (OpenTelemetry integration)
 - Workflow versioning
 
 ---
@@ -213,51 +227,64 @@ End-to-end workflow scenarios:
 - Benefits: Predictable, testable, event-sourceable
 
 ### 4. Separation of Concerns ✅
-**Decision:** Pure orchestration separated from I/O
+**Decision:** Pure orchestration separated from infrastructure
 - `Workflow` - Pure business logic (Decide, Evolve)
 - `WorkflowOrchestrator` - Pure orchestration (no I/O)
-- `WorkflowStreamProcessor` - Adds persistence (I/O)
-- Benefits: Easy testing, clear boundaries
+- `Wolverine` - Infrastructure (routing, execution, persistence)
+- Benefits: Easy testing, clear boundaries, production-ready infrastructure
 
 ---
 
 ## File Organization
 
+**Note:** Updated to reflect removal of WorkflowStreamProcessor and WorkflowOutputProcessor.
+
 ```
 Workflow/
 ├── Workflow/                          # Core framework library
-│   ├── Workflow.cs                    # Base workflow class
+│   ├── Workflow.cs                    # Base workflow classes (Workflow, AsyncWorkflow)
+│   ├── IWorkflow.cs                   # Workflow interfaces
 │   ├── WorkflowOrchestrator.cs        # Pure orchestrator
 │   ├── WorkflowCommand.cs             # Command types (Send, Reply, etc.)
 │   ├── WorkflowEvent.cs               # Event types (Began, Received, etc.)
 │   ├── WorkflowMessage.cs             # Unified stream message
 │   ├── IWorkflowPersistence.cs        # Persistence abstraction
-│   ├── InMemoryWorkflowPersistence.cs # In-memory implementation
-│   ├── WorkflowStreamProcessor.cs     # Stream processor (needs refactor)
-│   └── WorkflowOutputProcessor.cs     # Command executor
+│   └── InMemoryWorkflowPersistence.cs # In-memory implementation
 │
-├── Workflow.Tests/                    # Tests
-│   ├── GroupCheckoutWorkflow.cs       # Domain implementation
-│   ├── GroupCheckoutWorkflowTests.cs  # 18 tests (refactored)
+├── Workflow.Samples/                  # Sample workflows
+│   ├── OrderProcessingWorkflow.cs     # Order processing example
+│   └── GroupCheckoutWorkflow.cs       # Group checkout example
+│
+├── Workflow.Tests/                    # Tests (46 passing)
+│   ├── GroupCheckoutWorkflowTests.cs  # 18 tests
+│   ├── OrderProcessingWorkflowTests.cs # 28 tests
 │   ├── WorkflowOrchestratorTests.cs   # Orchestrator tests
 │   └── InMemoryWorkflowPersistenceTests.cs # Persistence tests
 │
+├── WorkflowWolverineSingle/           # Wolverine integration (in progress)
+│   ├── Program.cs                     # Wolverine setup
+│   ├── CreateCustomerHandler.cs       # Example handler
+│   └── BpPublisher.cs                 # Publisher example
+│
 └── ChatStates/                        # Documentation
-    ├── UNIFIED_STREAM_ARCHITECTURE.md # Architecture overview
+    ├── ARCHITECTURE.md                # Architecture overview
     ├── IMPLEMENTATION_STATE.md        # This file
-    ├── CONSUMER_AND_PERSISTENCE_DISCUSSION.md # Architecture decisions
-    └── ReliabilityPatterns.md         # Reliability patterns
+    ├── WOLVERINE_HYBRID_ARCHITECTURE.md # Wolverine integration plan
+    ├── PATTERNS.md                    # Reliability and Reply patterns
+    └── REPLY_COMMAND_PATTERNS.md      # Reply command usage guide
 ```
 
 ---
 
 ## Next Actions
 
+**Note:** Updated to reflect Wolverine integration strategy.
+
 ### Immediate Priority
-1. **Refactor WorkflowStreamProcessor** (per CONSUMER_AND_PERSISTENCE_DISCUSSION.md)
-   - Remove input persistence
-   - Accept `fromPosition` instead of message
-   - Keep output persistence
+1. **Wolverine Integration** (per WOLVERINE_HYBRID_ARCHITECTURE.md)
+   - Create Wolverine message handlers for workflows
+   - Implement command execution via Wolverine
+   - Set up background polling for pending commands
 
 2. **Implement WorkflowInputRouter**
    - Subscribe to source streams

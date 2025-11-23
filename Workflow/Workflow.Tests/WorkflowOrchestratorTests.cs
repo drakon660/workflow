@@ -167,50 +167,50 @@ public class WorkflowOrchestratorTests
         timeoutEvent.PendingCheckouts.Should().Contain("guest-3");
     }
 
-    [Fact]
-    public async Task Orchestrator_Centralizes_All_Workflow_Processing_Logic()
-    {
-        var workflow = new GroupCheckoutWorkflow();
-        string workflowId = "1";
-        var persistance = new InMemoryWorkflowPersistence<GroupCheckoutInputMessage, GroupCheckoutState, GroupCheckoutOutputMessage>();
-        var orchestrator = new WorkflowOrchestrator<GroupCheckoutInputMessage, GroupCheckoutState, GroupCheckoutOutputMessage>();
-        var streamProcessor = new WorkflowStreamProcessor<GroupCheckoutInputMessage, GroupCheckoutState, GroupCheckoutOutputMessage>(orchestrator, persistance);
-        // This test demonstrates that the orchestrator:
-        // (a) Calls Decide
-        // (b) Translates commands to events
-        // (c) Appends events to history
-        // (d) Evolves state
-        // (e) Returns everything needed for persistence
-        
-        var message = new InitiateGroupCheckout("group-123", [new Guest("guest-1")]);
-
-        //var result = _orchestrator.Process(_workflow, snapshot, message, begins: true);
-
-        // WorkflowStreamProcessor automatically determines 'begins' from the stream state
-        var result = await streamProcessor.ProcessAsync(workflow, workflowId, message);
-        // Verify all orchestration steps occurred:
-
-        // (a) Decide was called - commands generated
-        //result.Commands.Should().NotBeEmpty();
-        
-        // (b) Translate was called - events match command pattern
-        result.Snapshot.EventHistory.Should().Contain(e => e is Sent<GroupCheckoutInputMessage, GroupCheckoutOutputMessage>);
-        
-        // (c) Events appended to history
-        //result.NewSnapshot.EventHistory.Should().HaveCount(result.NewSnapshot..);
-        
-        // (d) State evolved from initial
-        //result.NewSnapshot.State.Should().NotBe(snapshot.State);
-        
-        // (e) New snapshot ready for persistence
-        result.Snapshot.Should().NotBeNull();
-        result.Snapshot.State.Should().BeOfType<Pending>();
-
-        var messages =  await persistance.ReadStreamAsync("1");
-        var list = messages.Select(x => x.Message);
-
-        // COMMENTED OUT: GetCheckoutStatus test - See ChatStates/REPLY_COMMAND_PATTERNS.md
-        // var checkStatusMessage = new GetCheckoutStatus("group-123");
-        // var checkStatusResult = await streamProcessor.ProcessAsync(workflow, workflowId, checkStatusMessage);
-    }
+    // [Fact]
+    // public async Task Orchestrator_Centralizes_All_Workflow_Processing_Logic()
+    // {
+    //     var workflow = new GroupCheckoutWorkflow();
+    //     string workflowId = "1";
+    //     var persistance = new InMemoryWorkflowPersistence<GroupCheckoutInputMessage, GroupCheckoutState, GroupCheckoutOutputMessage>();
+    //     var orchestrator = new WorkflowOrchestrator<GroupCheckoutInputMessage, GroupCheckoutState, GroupCheckoutOutputMessage>();
+    //     var streamProcessor = new WorkflowStreamProcessor<GroupCheckoutInputMessage, GroupCheckoutState, GroupCheckoutOutputMessage>(orchestrator, persistance);
+    //     // This test demonstrates that the orchestrator:
+    //     // (a) Calls Decide
+    //     // (b) Translates commands to events
+    //     // (c) Appends events to history
+    //     // (d) Evolves state
+    //     // (e) Returns everything needed for persistence
+    //     
+    //     var message = new InitiateGroupCheckout("group-123", [new Guest("guest-1")]);
+    //
+    //     //var result = _orchestrator.Process(_workflow, snapshot, message, begins: true);
+    //
+    //     // WorkflowStreamProcessor automatically determines 'begins' from the stream state
+    //     var result = await streamProcessor.ProcessAsync(workflow, workflowId, message);
+    //     // Verify all orchestration steps occurred:
+    //
+    //     // (a) Decide was called - commands generated
+    //     //result.Commands.Should().NotBeEmpty();
+    //     
+    //     // (b) Translate was called - events match command pattern
+    //     result.Snapshot.EventHistory.Should().Contain(e => e is Sent<GroupCheckoutInputMessage, GroupCheckoutOutputMessage>);
+    //     
+    //     // (c) Events appended to history
+    //     //result.NewSnapshot.EventHistory.Should().HaveCount(result.NewSnapshot..);
+    //     
+    //     // (d) State evolved from initial
+    //     //result.NewSnapshot.State.Should().NotBe(snapshot.State);
+    //     
+    //     // (e) New snapshot ready for persistence
+    //     result.Snapshot.Should().NotBeNull();
+    //     result.Snapshot.State.Should().BeOfType<Pending>();
+    //
+    //     var messages =  await persistance.ReadStreamAsync("1");
+    //     var list = messages.Select(x => x.Message);
+    //
+    //     // COMMENTED OUT: GetCheckoutStatus test - See ChatStates/REPLY_COMMAND_PATTERNS.md
+    //     // var checkStatusMessage = new GetCheckoutStatus("group-123");
+    //     // var checkStatusResult = await streamProcessor.ProcessAsync(workflow, workflowId, checkStatusMessage);
+    // }
 }

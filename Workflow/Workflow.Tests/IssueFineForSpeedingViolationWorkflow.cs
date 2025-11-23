@@ -66,7 +66,7 @@ public class IssueFineForSpeedingViolationWorkflow : Workflow<InputMessage, Stat
 public abstract record State;
 
 public abstract record InputMessage;
-public record PoliceReportPublished(string PoliceReportId, Offense Offense) : InputMessage;
+public record PoliceReportPublished (string PoliceReportId, Offense Offense) : InputMessage;
 public record TrafficFineSystemNumberGenerated(string PoliceReportId, string Number) : InputMessage;
 public record TrafficFineManualIdentificationCodeGenerated(string PoliceReportId, string Number, string Code) : InputMessage;
 

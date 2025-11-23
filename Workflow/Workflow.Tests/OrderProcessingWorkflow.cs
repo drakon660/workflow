@@ -1,6 +1,4 @@
-﻿using System.Diagnostics;
-
-namespace Workflow.Tests;
+﻿namespace Workflow.Tests;
 
 public sealed class OrderProcessingWorkflow : Workflow<OrderProcessingInputMessage, OrderProcessingState, OrderProcessingOutputMessage>
 {

@@ -97,9 +97,9 @@ public class AsyncWorkflowOrchestrator<TInput, TState, TOutput, TContext>
             newEvents
         );
     }
-    
+
     public WorkflowSnapshot<TInput, TState, TOutput> CreateInitialSnapshot(
-        IWorkflow<TInput, TState, TOutput> workflow)
+        IWorkflowBase<TInput, TState, TOutput> workflow)
     {
         return new WorkflowSnapshot<TInput, TState, TOutput>(
             workflow.InitialState,

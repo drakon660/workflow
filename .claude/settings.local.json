@@ -9,7 +9,8 @@
       "WebFetch(domain:delta-base.com)",
       "WebFetch(domain:thinkbeforecoding.com)",
       "Bash(find:*)",
-      "Bash(test:*)"
+      "Bash(test:*)",
+      "Bash(pandoc:*)"
     ],
     "deny": [],
     "ask": []

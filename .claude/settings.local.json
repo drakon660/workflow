@@ -10,7 +10,10 @@
       "WebFetch(domain:thinkbeforecoding.com)",
       "Bash(find:*)",
       "Bash(test:*)",
-      "Bash(pandoc:*)"
+      "Bash(pandoc:*)",
+      "Bash(wc:*)",
+      "Bash(dotnet run --project Workflow.Tests/Workflow.Tests.csproj -- -c \"\nusing Workflow.Visual;\nvar source = File.ReadAllText\\(@\"\"F:/src/workflow/Workflow/Workflow.Samples/Order/OrderProcessingWorkflow.cs\"\"\\);\nvar diagram = WorkflowDiagram.FromSource\\(source\\);\nConsole.WriteLine\\(diagram.GenerateStateTransitions\\(\\)\\);\n\")",
+      "Bash(dotnet run:*)"
     ],
     "deny": [],
     "ask": []

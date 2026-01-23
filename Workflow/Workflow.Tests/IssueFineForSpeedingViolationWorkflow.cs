@@ -1,4 +1,6 @@
 ﻿using Workflow.Core;
+using InitiatedBy = Workflow.InitiatedBy<Workflow.Tests.InputMessage, Workflow.Tests.OutputMessage>;
+using Received = Workflow.Received<Workflow.Tests.InputMessage,Workflow.Tests.OutputMessage>;
 
 namespace Workflow.Tests;
 
@@ -11,7 +13,7 @@ public class IssueFineForSpeedingViolationWorkflow : Workflow<InputMessage, Stat
         return (state, workflowEvent) switch
         {
             // Domain-specific events - change state
-            (Initial, InitiatedBy<InputMessage, OutputMessage> { Message: PoliceReportPublished m }) =>
+            (Initial, InitiatedBy { Message: PoliceReportPublished m }) =>
                 m.Offense switch
                 {
                     SpeedingViolation => new AwaitingSystemNumber(m.PoliceReportId),
@@ -19,10 +21,10 @@ public class IssueFineForSpeedingViolationWorkflow : Workflow<InputMessage, Stat
                     _ => throw new InvalidOperationException($"Unknown offense type: {m.Offense}")
                 },
 
-            (AwaitingSystemNumber s, Received<InputMessage, OutputMessage> { Message: TrafficFineSystemNumberGenerated m }) =>
+            (AwaitingSystemNumber s, Received { Message: TrafficFineSystemNumberGenerated m }) =>
                 new AwaitingManualIdentificationCode(s.PoliceReportId, m.Number),
 
-            (AwaitingManualIdentificationCode, Received<InputMessage, OutputMessage> { Message: TrafficFineManualIdentificationCodeGenerated }) =>
+            (AwaitingManualIdentificationCode, Received { Message: TrafficFineManualIdentificationCodeGenerated }) =>
                 new Final(),
 
             // Unhandled events - return state unchanged
@@ -45,20 +47,14 @@ public class IssueFineForSpeedingViolationWorkflow : Workflow<InputMessage, Stat
                 },
 
             (TrafficFineSystemNumberGenerated m, AwaitingSystemNumber s) =>
-                new List<WorkflowCommand<OutputMessage>>
-                {
-                    new Send<OutputMessage>(
-                        new GenerateTrafficFineManualIdentificationCode(s.PoliceReportId, m.Number))
-                },
+                [new Send<OutputMessage>(new GenerateTrafficFineManualIdentificationCode(s.PoliceReportId, m.Number))],
 
             (TrafficFineManualIdentificationCodeGenerated m, AwaitingManualIdentificationCode s) =>
-                new List<WorkflowCommand<OutputMessage>>
-                {
+            [
                     new Send<OutputMessage>(new IssueTrafficFine(m.PoliceReportId, s.SystemNumber, m.Code)),
                     new Complete<OutputMessage>()
-                },
-
-            _ => new List<WorkflowCommand<OutputMessage>>()
+                ],
+            _ => []
         };
     }
 }

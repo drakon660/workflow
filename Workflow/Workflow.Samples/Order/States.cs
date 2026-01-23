@@ -12,7 +12,7 @@ public record Shipped(string OrderId, string TrackingNumber) : OrderProcessingSt
 
 public record Delivered(string OrderId, string TrackingNumber) : OrderProcessingState;
 
-public record Cancelled(string OrderId, string Reason) : OrderProcessingState;
+public record OrderCancelled(string OrderId, string Reason) : OrderProcessingState;
 
 public record InsufficientInventory(string OrderId) : OrderProcessingState;
 

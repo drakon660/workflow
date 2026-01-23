@@ -12,23 +12,17 @@ public sealed class OrderProcessingWorkflow : Workflow<OrderProcessingInputMessa
     {
         return (state, workflowEvent) switch
         {
-            (NoOrder n, InitiatedBy { Message: PlaceOrderInputMessage m })
-                => new OrderCreated(m.OrderId),
+            { state: NoOrder n, workflowEvent: InitiatedBy { Message: PlaceOrderInputMessage m } } => new OrderCreated(m.OrderId),
 
-            (OrderCreated s, Received { Message: PaymentReceivedInputMessage m })
-                => new PaymentConfirmed(m.OrderId),
+            { state: OrderCreated s, workflowEvent: Received { Message: PaymentReceivedInputMessage m } } => new PaymentConfirmed(m.OrderId),
 
-            (PaymentConfirmed s, Received { Message: OrderShippedInputMessage m })
-                => new Shipped(m.OrderId,  m.TrackingNumber),
+            { state: PaymentConfirmed s, workflowEvent: Received { Message: OrderShippedInputMessage m } } => new Shipped(m.OrderId,  m.TrackingNumber),
 
-            (Shipped s, Received { Message: OrderDeliveredInputMessage m })
-                => new Delivered(m.OrderId, s.TrackingNumber),
+            { state: Shipped s, workflowEvent: Received { Message: OrderDeliveredInputMessage m } } => new Delivered(m.OrderId, s.TrackingNumber),
 
-            (OrderCreated s, Received { Message: OrderCancelledInputMessage m })
-                => new Cancelled(m.OrderId, m.Reason),
+            { state: OrderCreated s, workflowEvent: Received { Message: OrderCancelledInputMessage m } } => new OrderCancelled(m.OrderId, m.Reason),
 
-            (OrderCreated s, Received { Message: PaymentTimeoutInputMessage m })
-                => new Cancelled(m.OrderId, "Payment_Timeout"),
+            { state: OrderCreated s, workflowEvent: Received { Message: PaymentTimeoutInputMessage m } } => new OrderCancelled(m.OrderId, "Payment_Timeout"),
 
             _ => state
         };
@@ -43,7 +37,8 @@ public sealed class OrderProcessingWorkflow : Workflow<OrderProcessingInputMessa
             [
                 Send(new ProcessPayment(p.OrderId)),
                 Send(new NotifyOrderPlaced(p.OrderId)),
-                Schedule(TimeSpan.FromMinutes(15), new PaymentTimeoutOutMessage(p.OrderId))
+                //I need some engine for that
+                //Schedule(TimeSpan.FromMinutes(15), new PaymentTimeoutOutMessage(p.OrderId)) 
             ],
             
             (PaymentReceivedInputMessage p, OrderCreated s) =>
@@ -84,7 +79,7 @@ public sealed class OrderProcessingWorkflow : Workflow<OrderProcessingInputMessa
                         PaymentConfirmed => "PaymentConfirmed",
                         Shipped => "Shipped",
                         Delivered => "Delivered",
-                        Cancelled c => $"Cancelled: {c.Reason}",
+                        OrderCancelled c => $"Cancelled: {c.Reason}",
                         _ => "Unknown"
                     }
                 ))
@@ -94,7 +89,6 @@ public sealed class OrderProcessingWorkflow : Workflow<OrderProcessingInputMessa
         };
     }
 }
-
 
 public sealed class OrderProcessingAsyncWorkflow : AsyncWorkflow<OrderProcessingInputMessage, OrderProcessingState,
     OrderProcessingOutputMessage, IOrderContext>
@@ -114,7 +108,7 @@ public sealed class OrderProcessingAsyncWorkflow : AsyncWorkflow<OrderProcessing
                 => new PaymentConfirmed(m.OrderId),
 
             (AwaitingWarehouseInventory s, Received { Message: WarehouseInventoryUnavailableInputMessage m })
-                => new Cancelled(m.OrderId, "Warehouse_Inventory_Unavailable"),
+                => new OrderCancelled(m.OrderId, "Warehouse_Inventory_Unavailable"),
 
             (OrderCreated s, Received { Message: PaymentReceivedInputMessage m })
                 => new PaymentConfirmed(m.OrderId),
@@ -126,15 +120,14 @@ public sealed class OrderProcessingAsyncWorkflow : AsyncWorkflow<OrderProcessing
                 => new Delivered(m.OrderId, s.TrackingNumber),
 
             (OrderCreated s, Received { Message: OrderCancelledInputMessage m })
-                => new Cancelled(m.OrderId, m.Reason),
+                => new OrderCancelled(m.OrderId, m.Reason),
 
             (OrderCreated s, Received { Message: PaymentTimeoutInputMessage m })
-                => new Cancelled(m.OrderId, "Payment_Timeout"),
+                => new OrderCancelled(m.OrderId, "Payment_Timeout"),
 
             _ => state
         };
     }
-
     public override async Task<IReadOnlyList<WorkflowCommand<OrderProcessingOutputMessage>>> DecideAsync(OrderProcessingInputMessage input, OrderProcessingState state, IOrderContext service)
     {
         switch (input, state)
@@ -214,7 +207,7 @@ public sealed class OrderProcessingAsyncWorkflow : AsyncWorkflow<OrderProcessing
                             PaymentConfirmed => "PaymentConfirmed",
                             Shipped => "Shipped",
                             Delivered => "Delivered",
-                            Cancelled c => $"Cancelled: {c.Reason}",
+                            OrderCancelled c => $"Cancelled: {c.Reason}",
                             InsufficientInventory => "InsufficientInventory",
                             AwaitingWarehouseInventory => "AwaitingWarehouseInventory",
                             _ => "Unknown"

@@ -1,0 +1,9 @@
+module "ssm" {
+    source = " ..../ssm_parameter"
+
+    name = "Config_Url"
+    application_name = "testApp"
+    grouping = "feature1"
+
+    value = var.something_apiurl
+}

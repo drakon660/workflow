@@ -45,6 +45,26 @@ public class OrderProcessingWorkflowTests
         status.OrderId.Should().Be("order-123");
         status.Status.Should().Be("OrderCreated");
     }
+    
+    [Fact]
+    public void CheckOrderState_WhenOrderCreated_ShouldReplyWithStatusFull()
+    {
+        // Arrange
+        var workflow = new OrderProcessingWorkflow();
+        var workflowOrchestrator = new WorkflowOrchestrator<OrderProcessingInputMessage, OrderProcessingState, OrderProcessingOutputMessage>();
+        var snapshot = workflowOrchestrator.CreateInitialSnapshot(workflow);
+        var orderId = "order-123";
+
+        // Act
+        var result = workflowOrchestrator.Run(workflow, snapshot, new CheckOrderStateInputMessage(orderId), true);
+        
+        // Assert
+        result.Commands.Should().HaveCount(1);
+        var reply = result.Commands[0].Should().BeOfType<Reply<OrderProcessingOutputMessage>>().Subject;
+        var status = reply.Message.Should().BeOfType<OrderProcessingStatus>().Subject;
+        status.OrderId.Should().Be("order-123");
+        status.Status.Should().Be("NotExisting");
+    }
 }
 
 public class OrderProcessingAsyncWorkflowTests
@@ -184,8 +204,8 @@ public class OrderProcessingAsyncWorkflowTests
         var result = await orchestrator.RunAsync(workflow, snapshot, new OrderCancelledInputMessage("order-123", "Customer request"), context);
 
         // Assert
-        result.Snapshot.State.Should().BeOfType<Cancelled>();
-        var cancelledState = (Cancelled)result.Snapshot.State;
+        result.Snapshot.State.Should().BeOfType<OrderCancelled>();
+        var cancelledState = (OrderCancelled)result.Snapshot.State;
         cancelledState.Reason.Should().Be("Customer request");
 
         result.Commands.Should().HaveCount(2);
@@ -209,8 +229,8 @@ public class OrderProcessingAsyncWorkflowTests
         var result = await orchestrator.RunAsync(workflow, snapshot, new PaymentTimeoutInputMessage("order-123"), context);
 
         // Assert
-        result.Snapshot.State.Should().BeOfType<Cancelled>();
-        var cancelledState = (Cancelled)result.Snapshot.State;
+        result.Snapshot.State.Should().BeOfType<OrderCancelled>();
+        var cancelledState = (OrderCancelled)result.Snapshot.State;
         cancelledState.Reason.Should().Be("Payment_Timeout");
 
         result.Commands.Should().HaveCount(2);
@@ -358,8 +378,8 @@ public class OrderProcessingAsyncWorkflowTests
         var result = await orchestrator.RunAsync(workflow, snapshot, new WarehouseInventoryUnavailableInputMessage(orderId), context);
 
         // Assert - State transitions to Cancelled
-        result.Snapshot.State.Should().BeOfType<Cancelled>();
-        var cancelledState = (Cancelled)result.Snapshot.State;
+        result.Snapshot.State.Should().BeOfType<OrderCancelled>();
+        var cancelledState = (OrderCancelled)result.Snapshot.State;
         cancelledState.Reason.Should().Be("Warehouse_Inventory_Unavailable");
 
         // Verify cancellation notification and completion

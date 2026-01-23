@@ -14,9 +14,14 @@ public class OrderProcessingWorkflowTests
 
         var orderId = "order-1";
 
+        // First check Decide output
+        var commands = workflow.Decide(new PlaceOrderInputMessage(orderId), snapshot.State);
+        commands.Count.Should().Be(3); // Send, Send, Schedule
+
         var result = workflowOrchestrator.Run(workflow, snapshot, new PlaceOrderInputMessage(orderId), true);
 
-        result.Events.Count.Should().Be(5);  // ✅ Correct!
+        // Events: Began, InitiatedBy, Sent, Sent, Scheduled = 5
+        result.Events.Count.Should().Be(5);
 
         // Check state changed
         result.Snapshot.State.Should().BeOfType<OrderCreated>();  // ✅

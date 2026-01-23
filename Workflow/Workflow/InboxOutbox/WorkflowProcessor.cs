@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Workflow.InboxOutbox;
 
@@ -8,23 +9,32 @@ namespace Workflow.InboxOutbox;
 /// </summary>
 public class WorkflowProcessor<TInput, TState, TOutput>
 {
+    // JsonSerializer options - NOTE: polymorphic properties (TInput/TOutput) require
+    // [JsonPolymorphic] attributes on base types for full serialization.
+    // DeserializedBody is used at runtime, Body is for persistence/recovery.
+    static readonly JsonSerializerOptions SerializerOptions = new()
+    {
+        WriteIndented = false,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+    };
+
     readonly WorkflowStreamRepository _repository;
     readonly IWorkflow<TInput, TState, TOutput> _workflow;
     readonly WorkflowOrchestrator<TInput, TState, TOutput> _orchestrator;
-    readonly Func<WorkflowMessage, CancellationToken, Task> _deliverOutput;
+    readonly Func<WorkflowMessage, CancellationToken, Task>? _deliverOutput;
     readonly WorkflowProcessorOptions _options;
 
     public WorkflowProcessor(
         WorkflowStreamRepository repository,
         IWorkflow<TInput, TState, TOutput> workflow,
-        Func<WorkflowMessage, CancellationToken, Task> deliverOutput,
-        WorkflowProcessorOptions options)
+        Func<WorkflowMessage, CancellationToken, Task>? deliverOutput = null,
+        WorkflowProcessorOptions? options = null)
     {
         _repository = repository;
         _workflow = workflow;
         _orchestrator = new WorkflowOrchestrator<TInput, TState, TOutput>();
         _deliverOutput = deliverOutput;
-        _options = options;
+        _options = options ?? new WorkflowProcessorOptions();
     }
 
     /// <summary>
@@ -63,7 +73,8 @@ public class WorkflowProcessor<TInput, TState, TOutput>
             stream.LastProcessedSequence = inputMessage.SequenceNumber;
 
             // Deliver pending outputs
-            await DeliverOutputsAsync(stream, ct).ConfigureAwait(false);
+            if(_deliverOutput is not null)
+                await DeliverOutputsAsync(stream, ct).ConfigureAwait(false);
         }
         finally
         {
@@ -81,8 +92,8 @@ public class WorkflowProcessor<TInput, TState, TOutput>
             MessageId = Guid.NewGuid(),
             Direction = MessageDirection.Input,
             Kind = MessageKind.Command, // Inputs are commands/messages
-            MessageType = typeof(TInput).AssemblyQualifiedName!,
-            Body = JsonSerializer.Serialize(input),
+            MessageType = input!.GetType().AssemblyQualifiedName!,
+            Body = JsonSerializer.Serialize(input, input.GetType(), SerializerOptions),
             DeserializedBody = input
         };
 
@@ -92,16 +103,40 @@ public class WorkflowProcessor<TInput, TState, TOutput>
 
     /// <summary>
     /// Store event in workflow stream (for state rebuilding).
+    /// Extracts inner message and serializes it with its runtime type.
     /// </summary>
     void StoreEvent(WorkflowStream stream, WorkflowEvent<TInput, TOutput> evt)
     {
+        // Extract inner message and additional data based on event type
+        var (innerMessage, innerMessageType, additionalData) = evt switch
+        {
+            InitiatedBy<TInput, TOutput> e => ((object?)e.Message, e.Message?.GetType(), (string?)null),
+            Received<TInput, TOutput> e => (e.Message, e.Message?.GetType(), null),
+            Sent<TInput, TOutput> e => (e.Message, e.Message?.GetType(), null),
+            Replied<TInput, TOutput> e => (e.Message, e.Message?.GetType(), null),
+            Published<TInput, TOutput> e => (e.Message, e.Message?.GetType(), null),
+            Scheduled<TInput, TOutput> e => (e.Message, e.Message?.GetType(), e.After.ToString()),
+            Began<TInput, TOutput> => (null, null, null),
+            Completed<TInput, TOutput> => (null, null, null),
+            _ => (null, null, null)
+        };
+
+        // Get simple event type name (e.g., "Sent" instead of full generic type)
+        var eventTypeName = evt.GetType().Name;
+        if (eventTypeName.Contains('`'))
+            eventTypeName = eventTypeName[..eventTypeName.IndexOf('`')];
+
         var message = new WorkflowMessage
         {
             MessageId = Guid.NewGuid(),
-            Direction = MessageDirection.Output, // Events are outputs of processing
+            Direction = MessageDirection.Output,
             Kind = MessageKind.Event,
-            MessageType = evt.GetType().AssemblyQualifiedName!,
-            Body = JsonSerializer.Serialize(evt, evt.GetType()),
+            MessageType = eventTypeName,
+            InnerMessageType = innerMessageType?.AssemblyQualifiedName,
+            Body = innerMessage != null
+                ? JsonSerializer.Serialize(innerMessage, innerMessageType!, SerializerOptions)
+                : "{}",
+            AdditionalData = additionalData,
             DeserializedBody = evt
         };
 
@@ -110,26 +145,37 @@ public class WorkflowProcessor<TInput, TState, TOutput>
 
     /// <summary>
     /// Store command in workflow stream (outbox for delivery).
+    /// Extracts inner message and serializes it with its runtime type.
     /// </summary>
     void StoreCommand(WorkflowStream stream, WorkflowCommand<TOutput> command)
     {
-        var (destination, scheduledTime) = command switch
+        // Extract inner message and additional data based on command type
+        var (innerMessage, innerMessageType, additionalData, destination, scheduledTime) = command switch
         {
-            Send<TOutput> => ("send", (DateTime?)null),
-            Reply<TOutput> => ("reply", null),
-            Publish<TOutput> => ("publish", null),
-            Schedule<TOutput> s => ("schedule", DateTime.UtcNow.Add(s.After)),
-            Complete<TOutput> => ("complete", null),
-            _ => ("unknown", (DateTime?)null)
+            Send<TOutput> c => ((object?)c.Message, c.Message?.GetType(), (string?)null, "send", (DateTime?)null),
+            Reply<TOutput> c => (c.Message, c.Message?.GetType(), null, "reply", null),
+            Publish<TOutput> c => (c.Message, c.Message?.GetType(), null, "publish", null),
+            Schedule<TOutput> c => (c.Message, c.Message?.GetType(), c.After.ToString(), "schedule", DateTime.UtcNow.Add(c.After)),
+            Complete<TOutput> => (null, null, null, "complete", null),
+            _ => (null, null, null, "unknown", null)
         };
+
+        // Get simple command type name (e.g., "Send" instead of full generic type)
+        var commandTypeName = command.GetType().Name;
+        if (commandTypeName.Contains('`'))
+            commandTypeName = commandTypeName[..commandTypeName.IndexOf('`')];
 
         var message = new WorkflowMessage
         {
             MessageId = Guid.NewGuid(),
             Direction = MessageDirection.Output,
             Kind = MessageKind.Command,
-            MessageType = command.GetType().AssemblyQualifiedName!,
-            Body = JsonSerializer.Serialize(command, command.GetType()),
+            MessageType = commandTypeName,
+            InnerMessageType = innerMessageType?.AssemblyQualifiedName,
+            Body = innerMessage != null
+                ? JsonSerializer.Serialize(innerMessage, innerMessageType!, SerializerOptions)
+                : "{}",
+            AdditionalData = additionalData,
             DeserializedBody = command,
             DestinationAddress = destination,
             ScheduledTime = scheduledTime
@@ -165,22 +211,22 @@ public class WorkflowProcessor<TInput, TState, TOutput>
     {
         var outputs = stream.GetPendingOutputs();
         var delivered = 0;
-
+    
         foreach (var output in outputs)
         {
             if (delivered >= _options.OutputDeliveryLimit)
                 break;
-
+    
             // Skip scheduled messages that aren't due yet
             if (output.ScheduledTime.HasValue && output.ScheduledTime.Value > DateTime.UtcNow)
                 continue;
-
+    
             using var timeoutCts = new CancellationTokenSource(_options.OutputDeliveryTimeout);
             using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
-
+    
             output.DeserializedBody ??= DeserializeCommand(output);
 
-            await _deliverOutput(output, linkedCts.Token).ConfigureAwait(false);
+            await _deliverOutput!(output, linkedCts.Token).ConfigureAwait(false);
 
             output.DeliveredTime = DateTime.UtcNow;
             stream.LastDeliveredSequence = output.SequenceNumber;
@@ -188,17 +234,62 @@ public class WorkflowProcessor<TInput, TState, TOutput>
         }
     }
 
+    /// <summary>
+    /// Deserialize event from stored message, reconstructing the proper generic type.
+    /// </summary>
     WorkflowEvent<TInput, TOutput> DeserializeEvent(WorkflowMessage message)
     {
-        var type = Type.GetType(message.MessageType)
-                   ?? throw new InvalidOperationException($"Cannot resolve type: {message.MessageType}");
-        return (WorkflowEvent<TInput, TOutput>)JsonSerializer.Deserialize(message.Body, type)!;
+        // Deserialize inner message if present
+        object? innerMessage = null;
+        if (!string.IsNullOrEmpty(message.InnerMessageType) && message.Body != "{}")
+        {
+            var innerType = Type.GetType(message.InnerMessageType)
+                ?? throw new InvalidOperationException($"Cannot resolve inner type: {message.InnerMessageType}");
+            innerMessage = JsonSerializer.Deserialize(message.Body, innerType, SerializerOptions);
+        }
+
+        // Reconstruct the event based on type name
+        return message.MessageType switch
+        {
+            "Began" => new Began<TInput, TOutput>(),
+            "Completed" => new Completed<TInput, TOutput>(),
+            "InitiatedBy" => new InitiatedBy<TInput, TOutput>((TInput)innerMessage!),
+            "Received" => new Received<TInput, TOutput>((TInput)innerMessage!),
+            "Sent" => new Sent<TInput, TOutput>((TOutput)innerMessage!),
+            "Replied" => new Replied<TInput, TOutput>((TOutput)innerMessage!),
+            "Published" => new Published<TInput, TOutput>((TOutput)innerMessage!),
+            "Scheduled" => new Scheduled<TInput, TOutput>(
+                TimeSpan.Parse(message.AdditionalData!),
+                (TOutput)innerMessage!),
+            _ => throw new InvalidOperationException($"Unknown event type: {message.MessageType}")
+        };
     }
 
+    /// <summary>
+    /// Deserialize command from stored message, reconstructing the proper generic type.
+    /// </summary>
     WorkflowCommand<TOutput> DeserializeCommand(WorkflowMessage message)
     {
-        var type = Type.GetType(message.MessageType)
-                   ?? throw new InvalidOperationException($"Cannot resolve type: {message.MessageType}");
-        return (WorkflowCommand<TOutput>)JsonSerializer.Deserialize(message.Body, type)!;
+        // Deserialize inner message if present
+        object? innerMessage = null;
+        if (!string.IsNullOrEmpty(message.InnerMessageType) && message.Body != "{}")
+        {
+            var innerType = Type.GetType(message.InnerMessageType)
+                ?? throw new InvalidOperationException($"Cannot resolve inner type: {message.InnerMessageType}");
+            innerMessage = JsonSerializer.Deserialize(message.Body, innerType, SerializerOptions);
+        }
+
+        // Reconstruct the command based on type name
+        return message.MessageType switch
+        {
+            "Complete" => new Complete<TOutput>(),
+            "Send" => new Send<TOutput>((TOutput)innerMessage!),
+            "Reply" => new Reply<TOutput>((TOutput)innerMessage!),
+            "Publish" => new Publish<TOutput>((TOutput)innerMessage!),
+            "Schedule" => new Schedule<TOutput>(
+                TimeSpan.Parse(message.AdditionalData!),
+                (TOutput)innerMessage!),
+            _ => throw new InvalidOperationException($"Unknown command type: {message.MessageType}")
+        };
     }
 }

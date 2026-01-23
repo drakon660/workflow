@@ -262,10 +262,81 @@ public class WorkflowProcessorTests
         // The Schedule command should NOT have been delivered because it's in the future
         scheduledDelivered.Should().BeEmpty();
 
-        // But it should be stored in the stream
+        // But it should be stored in the stream (check all commands, then filter)
         var stream = await repository.GetOrCreate(TestWorkflowId, CancellationToken.None);
-        var pendingOutputs = stream.GetPendingOutputs();
-        var scheduledPending = pendingOutputs.Where(m => m.ScheduledTime.HasValue).ToList();
-        scheduledPending.Should().HaveCount(1);
+
+        // Get all commands in stream
+        var allCommands = stream.GetAllMessages()
+            .Where(m => m.Kind == MessageKind.Command && m.Direction == MessageDirection.Output)
+            .ToList();
+        allCommands.Should().HaveCount(3); // Send, Send, Schedule
+
+        // The scheduled one should have ScheduledTime set
+        var scheduledCommand = allCommands.SingleOrDefault(m => m.ScheduledTime.HasValue);
+        scheduledCommand.Should().NotBeNull();
+
+        // It should NOT be marked as delivered
+        scheduledCommand!.IsDelivered.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ProcessAsync_ShouldSerializeInnerMessagesWithRuntimeType()
+    {
+        // Arrange
+        var repository = new WorkflowStreamRepository();
+        var deliveredMessages = new List<WorkflowMessage>();
+        var processor = CreateProcessor(repository, deliveredMessages);
+
+        // Act
+        await processor.ProcessAsync(TestWorkflowId, new PlaceOrderInputMessage(TestWorkflowId));
+
+        // Assert - check the serialized events have proper inner message types
+        var stream = await repository.GetOrCreate(TestWorkflowId, CancellationToken.None);
+        var events = stream.GetEvents();
+
+        // Find the Sent event for ProcessPayment
+        var sentEvent = events.First(e => e.MessageType == "Sent" && e.Body.Contains("ProcessPayment") == false);
+
+        // The Body should now contain the actual OrderId, not just {}
+        sentEvent.Body.Should().Contain("order-123");
+
+        // InnerMessageType should be set
+        sentEvent.InnerMessageType.Should().NotBeNullOrEmpty();
+        sentEvent.InnerMessageType.Should().Contain("ProcessPayment");
+
+        // The input should also be properly serialized
+        var allMessages = stream.GetAllMessages();
+        var input = allMessages.First(m => m.Direction == MessageDirection.Input);
+        input.Body.Should().Contain("order-123");
+    }
+
+    [Fact]
+    public async Task ProcessAsync_ShouldDeserializeEventsCorrectly()
+    {
+        // Arrange
+        var repository = new WorkflowStreamRepository();
+        var deliveredMessages = new List<WorkflowMessage>();
+        var processor = CreateProcessor(repository, deliveredMessages);
+
+        // Process first message
+        await processor.ProcessAsync(TestWorkflowId, new PlaceOrderInputMessage(TestWorkflowId));
+
+        // Clear DeserializedBody to force deserialization from Body
+        var stream = await repository.GetOrCreate(TestWorkflowId, CancellationToken.None);
+        foreach (var msg in stream.GetEvents())
+        {
+            msg.DeserializedBody = null;
+        }
+
+        // Act - process another message (will rebuild state from stored events)
+        await processor.ProcessAsync(TestWorkflowId, new PaymentReceivedInputMessage(TestWorkflowId));
+
+        // Assert - verify state was rebuilt correctly by checking the final state
+        deliveredMessages.Clear();
+        await processor.ProcessAsync(TestWorkflowId, new CheckOrderStateInputMessage(TestWorkflowId));
+
+        var reply = deliveredMessages[0].DeserializedBody as Reply<OrderProcessingOutputMessage>;
+        var status = reply!.Message as OrderProcessingStatus;
+        status!.Status.Should().Be("PaymentConfirmed");
     }
 }

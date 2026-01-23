@@ -9,6 +9,7 @@
     <ItemGroup>
       <PackageReference Include="MermaidDotNet" Version="0.7.31" />
       <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.12.0" />
+      <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.2" />
     </ItemGroup>
 
 </Project>

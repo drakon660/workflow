@@ -29,4 +29,10 @@ public class WorkflowStreamRepository
         await stream.AcquireLock(ct).ConfigureAwait(false);
         return stream;
     }
+
+    public WorkflowStream GetAll(string workflowId)
+    {
+        _streams.TryGetValue(workflowId, out var stream);
+        return stream;
+    }
 }

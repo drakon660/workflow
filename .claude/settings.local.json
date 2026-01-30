@@ -13,7 +13,11 @@
       "Bash(pandoc:*)",
       "Bash(wc:*)",
       "Bash(dotnet run --project Workflow.Tests/Workflow.Tests.csproj -- -c \"\nusing Workflow.Visual;\nvar source = File.ReadAllText\\(@\"\"F:/src/workflow/Workflow/Workflow.Samples/Order/OrderProcessingWorkflow.cs\"\"\\);\nvar diagram = WorkflowDiagram.FromSource\\(source\\);\nConsole.WriteLine\\(diagram.GenerateStateTransitions\\(\\)\\);\n\")",
-      "Bash(dotnet run:*)"
+      "Bash(dotnet run:*)",
+      "WebFetch(domain:masstransit.io)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:event-driven.io)",
+      "Bash(docker compose:*)"
     ],
     "deny": [],
     "ask": []

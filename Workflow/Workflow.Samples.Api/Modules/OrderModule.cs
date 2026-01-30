@@ -77,11 +77,9 @@ public class OrderModule : ICarterModule
             .WithName("GetAllMessages");
     }
 
-    // TODO: Implement these handlers
     private static async Task<IResult> GetOrderById(Guid id, CancellationToken cancellationToken)
     {
         // TODO: Load order state from persistence
-        // TODO: Map state to response
         await Task.Delay(1, cancellationToken);
         return Results.Ok(new OrderStatusResponse
         {
@@ -92,76 +90,97 @@ public class OrderModule : ICarterModule
         });
     }
 
-    private static async Task<IResult> CreateOrder(CreateOrderRequest request, 
-        [FromServices] WorkflowProcessor<OrderProcessingInputMessage, OrderProcessingState, OrderProcessingOutputMessage> workflowProcessor, CancellationToken cancellationToken)
+    private static async Task<IResult> CreateOrder(
+        CreateOrderRequest request,
+        [FromServices] IWorkflowBus workflowBus,
+        CancellationToken cancellationToken)
     {
         var orderId = request.OrderId ?? Guid.NewGuid();
-        
-        await workflowProcessor.ProcessAsync(orderId.ToString(), new PlaceOrderInputMessage(orderId.ToString()), cancellationToken);
-        
+        var orderIdStr = orderId.ToString();
+
+        // Clean API - no envelope creation needed
+        await workflowBus.SendAsync(orderIdStr, new PlaceOrderInputMessage(orderIdStr), cancellationToken);
+
         return Results.Created($"/orders/{orderId}", new OrderCreatedResponse
         {
             OrderId = orderId,
             Status = "OrderCreated",
-            Message = "Order created and processing initiated"
+            Message = "Order queued for processing"
         });
     }
 
-    private static async Task<IResult> RecordPayment(Guid id, RecordPaymentRequest request, CancellationToken cancellationToken)
+    private static async Task<IResult> RecordPayment(
+        Guid id,
+        RecordPaymentRequest request,
+        [FromServices] IWorkflowBus workflowBus,
+        CancellationToken cancellationToken)
     {
-        // TODO: Validate order exists
-        // TODO: Send PaymentReceivedInputMessage to workflow
-        // TODO: Return success response
-        await Task.Delay(1, cancellationToken);
+        var orderIdStr = id.ToString();
+
+        await workflowBus.SendAsync(orderIdStr, new PaymentReceivedInputMessage(orderIdStr), cancellationToken);
+
         return Results.Ok(new { Message = "Payment recorded successfully" });
     }
 
-    private static async Task<IResult> ShipOrder(Guid id, ShipOrderRequest request, CancellationToken cancellationToken)
+    private static async Task<IResult> ShipOrder(
+        Guid id,
+        ShipOrderRequest request,
+        [FromServices] IWorkflowBus workflowBus,
+        CancellationToken cancellationToken)
     {
-        // TODO: Validate order exists and is in correct state
-        // TODO: Send OrderShippedInputMessage to workflow
-        // TODO: Return success response
-        await Task.Delay(1, cancellationToken);
+        var orderIdStr = id.ToString();
+
+        await workflowBus.SendAsync(orderIdStr, new OrderShippedInputMessage(orderIdStr, request.TrackingNumber), cancellationToken);
+
         return Results.Ok(new { Message = "Order shipped successfully" });
     }
 
-    private static async Task<IResult> DeliverOrder(Guid id, CancellationToken cancellationToken)
+    private static async Task<IResult> DeliverOrder(
+        Guid id,
+        [FromServices] IWorkflowBus workflowBus,
+        CancellationToken cancellationToken)
     {
-        // TODO: Validate order exists and is in correct state
-        // TODO: Send OrderDeliveredInputMessage to workflow
-        // TODO: Return success response
-        await Task.Delay(1, cancellationToken);
+        var orderIdStr = id.ToString();
+
+        await workflowBus.SendAsync(orderIdStr, new OrderDeliveredInputMessage(orderIdStr), cancellationToken);
+
         return Results.Ok(new { Message = "Order marked as delivered successfully" });
     }
 
-    private static async Task<IResult> CancelOrder(Guid id, CancelOrderRequest request, CancellationToken cancellationToken)
+    private static async Task<IResult> CancelOrder(
+        Guid id,
+        CancelOrderRequest request,
+        [FromServices] IWorkflowBus workflowBus,
+        CancellationToken cancellationToken)
     {
-        // TODO: Validate order exists
-        // TODO: Send OrderCancelledInputMessage to workflow
-        // TODO: Return success response
-        await Task.Delay(1, cancellationToken);
+        var orderIdStr = id.ToString();
+
+        await workflowBus.SendAsync(orderIdStr, new OrderCancelledInputMessage(orderIdStr, request.Reason), cancellationToken);
+
         return Results.Ok(new { Message = "Order cancelled successfully" });
     }
 
-    private static async Task<IResult> GetOrderStatus(Guid id, CancellationToken cancellationToken)
+    private static async Task<IResult> GetOrderStatus(
+        Guid id,
+        [FromServices] IWorkflowBus workflowBus,
+        CancellationToken cancellationToken)
     {
-        // TODO: Send CheckOrderStateInputMessage to workflow
-        // TODO: Get Reply command with status
-        // TODO: Return status response
-        await Task.Delay(1, cancellationToken);
+        var orderIdStr = id.ToString();
+
+        await workflowBus.SendAsync(orderIdStr, new CheckOrderStateInputMessage(orderIdStr), cancellationToken);
+
+        // For now, return immediate response
         return Results.Ok(new OrderStatusResponse
         {
             OrderId = id,
-            Status = "NotExisting",
-            CreatedAt = DateTime.UtcNow,
-            TrackingNumber = null
+            Status = "StatusRequested",
+            CreatedAt = DateTime.UtcNow
         });
     }
 
     private static IResult GetAllMessages(string id, WorkflowStreamRepository workflowStreamRepository)
     {
         var allMessages = workflowStreamRepository.GetAll(id);
-
         return Results.Ok(allMessages.GetAllMessages());
     }
 }

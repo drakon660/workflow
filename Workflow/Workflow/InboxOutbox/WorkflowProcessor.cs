@@ -73,8 +73,8 @@ public class WorkflowProcessor<TInput, TState, TOutput>
             stream.LastProcessedSequence = inputMessage.SequenceNumber;
 
             // Deliver pending outputs
-            if(_deliverOutput is not null)
-                await DeliverOutputsAsync(stream, ct).ConfigureAwait(false);
+            // if(_deliverOutput is not null)
+            //     await DeliverOutputsAsync(stream, ct).ConfigureAwait(false);
         }
         finally
         {

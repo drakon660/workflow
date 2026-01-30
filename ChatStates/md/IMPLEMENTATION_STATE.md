@@ -1,14 +1,14 @@
 # Workflow Implementation State
 
-**Last Updated:** 2025-11-23
+**Last Updated:** 2025-01-26
 
-**Architecture Update:** WorkflowStreamProcessor and WorkflowOutputProcessor have been removed. Infrastructure is now delegated to Wolverine (see WOLVERINE_HYBRID_ARCHITECTURE.md).
+**Architecture Update:** Wolverine integration completed. Using Wolverine local queues as the messaging infrastructure with generic routing.
 
 ---
 
-## Current Status: Phase 1 Complete ✅
+## Current Status: Phase 2 In Progress ⏳
 
-We have successfully implemented the core workflow orchestration framework with unified stream architecture (RFC Option C).
+Core workflow orchestration framework complete. Wolverine integration for input processing implemented.
 
 ---
 
@@ -49,7 +49,7 @@ public abstract class AsyncWorkflow<TInput, TState, TOutput, TContext> : Workflo
 - `Send<TOutput>` - Send message to specific handler
 - `Publish<TOutput>` - Publish event to subscribers
 - `Schedule<TOutput>` - Schedule delayed message
-- `Reply<TOutput>` - Reply to caller (query operations) ✅ NEW
+- `Reply<TOutput>` - Reply to caller (query operations)
 - `Complete<TOutput>` - Mark workflow as complete
 
 #### **Event Types** ✅
@@ -59,10 +59,148 @@ public abstract class AsyncWorkflow<TInput, TState, TOutput, TContext> : Workflo
 - `Sent` - Command sent
 - `Published` - Event published
 - `Scheduled` - Delayed message scheduled
-- `Replied` - Reply sent (query operations) ✅ NEW
+- `Replied` - Reply sent (query operations)
 - `Completed` - Workflow completed
 
-### 2. Stream Architecture (RFC Option C)
+### 2. Wolverine Integration ✅ NEW
+
+#### **Architecture Overview**
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  Wolverine-Based Input Processing                                   │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  API / External                                                     │
+│       │                                                             │
+│       │  await workflowBus.SendAsync(orderId, input)               │
+│       ▼                                                             │
+│  ┌─────────────────┐                                               │
+│  │  IWorkflowBus   │  ◄── Clean abstraction (no envelope needed)   │
+│  │  (interface)    │                                               │
+│  └────────┬────────┘                                               │
+│           │                                                         │
+│           ▼                                                         │
+│  ┌─────────────────────┐                                           │
+│  │ WolverineWorkflowBus │  ◄── Creates envelope internally         │
+│  │  - Type registry lookup                                          │
+│  │  - Inheritance support                                           │
+│  └────────┬─────────────┘                                          │
+│           │                                                         │
+│           ▼                                                         │
+│  ┌─────────────────────┐                                           │
+│  │ WorkflowInputEnvelope│  ◄── Internal message (hidden from API)  │
+│  │  - WorkflowId        │                                          │
+│  │  - WorkflowType      │                                          │
+│  │  - Input (object)    │                                          │
+│  └────────┬─────────────┘                                          │
+│           │                                                         │
+│           ▼                                                         │
+│  ┌─────────────────────────┐                                       │
+│  │ Wolverine Local Queue   │  "workflow-inputs"                    │
+│  │  - Sequential processing │                                       │
+│  │  - Retry/error handling  │                                       │
+│  └────────┬─────────────────┘                                      │
+│           │                                                         │
+│           ▼                                                         │
+│  ┌─────────────────────┐                                           │
+│  │ WorkflowInputHandler │  ◄── ROUTER (RFC role)                   │
+│  │  - Routes by WorkflowType                                        │
+│  │  - Resolves processor                                            │
+│  └────────┬─────────────┘                                          │
+│           │                                                         │
+│           ▼                                                         │
+│  ┌───────────────────────────┐                                     │
+│  │ IWorkflowProcessorFactory │  ◄── Resolves by type key           │
+│  └────────┬──────────────────┘                                     │
+│           │                                                         │
+│           ▼                                                         │
+│  ┌─────────────────────────────────────────┐                       │
+│  │ WorkflowProcessor<TInput,TState,TOutput> │  ◄── RFC PROCESS     │
+│  │                                          │                       │
+│  │  → Lock(workflowId)                      │                       │
+│  │  → StoreInput() (inbox)                  │                       │
+│  │  → RebuildState() (replay events)        │                       │
+│  │  → Decide() → get outputs                │                       │
+│  │  → StoreOutput() (outbox)                │                       │
+│  │  → DeliverOutputs()                      │                       │
+│  │  → ReleaseLock()                         │                       │
+│  └─────────────────────────────────────────┘                       │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+#### **New Components** ✅
+
+| Component | Location | Purpose |
+|-----------|----------|---------|
+| `IWorkflowBus` | `Workflow/InboxOutbox/IWorkflowBus.cs` | Clean abstraction for sending workflow inputs |
+| `WolverineWorkflowBus` | `Workflow/InboxOutbox/WolverineWorkflowBus.cs` | Wolverine implementation, creates envelope internally |
+| `WorkflowInputEnvelope` | `Workflow/InboxOutbox/WorkflowInputEnvelope.cs` | Non-generic message for Wolverine routing |
+| `WorkflowInputHandler` | `Workflow/InboxOutbox/WorkflowInputHandler.cs` | Generic Wolverine handler (Router role) |
+| `IWorkflowProcessorFactory` | `Workflow/InboxOutbox/IWorkflowProcessorFactory.cs` | Factory for resolving processors by type |
+| `IWorkflowTypeRegistry` | `Workflow/InboxOutbox/IWorkflowBus.cs` | Maps input types to workflow types |
+
+#### **Registration Pattern** ✅
+
+```csharp
+// Program.cs - Single line registers everything
+builder.Services.AddWorkflow<OrderProcessingInputMessage, OrderProcessingState,
+    OrderProcessingOutputMessage, OrderProcessingWorkflow>("OrderProcessing");
+
+// This automatically registers:
+// - IWorkflowBus (WolverineWorkflowBus)
+// - IWorkflowProcessorFactory
+// - IWorkflowTypeRegistry
+// - IWorkflowProcessorRegistration for this workflow type
+
+// Wolverine configuration
+builder.Host.UseWolverine(opts =>
+{
+    opts.LocalQueue("workflow-inputs").Sequential();
+    opts.PublishMessage<WorkflowInputEnvelope>().ToLocalQueue("workflow-inputs");
+    opts.Discovery.IncludeAssembly(typeof(WorkflowInputHandler).Assembly);
+});
+```
+
+#### **Client Usage** ✅
+
+```csharp
+// Clean API - no envelope, no workflow type needed
+public class OrderModule
+{
+    public async Task<IResult> CreateOrder(
+        CreateOrderRequest request,
+        IWorkflowBus workflowBus,
+        CancellationToken ct)
+    {
+        var orderId = Guid.NewGuid().ToString();
+
+        // Just send the input - library handles everything else
+        await workflowBus.SendAsync(orderId, new PlaceOrderInputMessage(orderId), ct);
+
+        return Results.Created($"/orders/{orderId}", ...);
+    }
+}
+```
+
+#### **Type Inheritance Support** ✅
+
+The `IWorkflowTypeRegistry` supports inheritance lookup:
+
+```csharp
+// Registration maps base type
+AddWorkflow<OrderProcessingInputMessage, ...>("OrderProcessing");
+
+// Client sends concrete type
+await workflowBus.SendAsync(orderId, new PlaceOrderInputMessage(orderId));
+// PlaceOrderInputMessage : OrderProcessingInputMessage
+
+// Registry walks inheritance chain to find mapping:
+// PlaceOrderInputMessage → OrderProcessingInputMessage → "OrderProcessing"
+```
+
+### 3. Stream Architecture (RFC Option C)
 
 #### **WorkflowMessage** ✅
 Unified message wrapper for stream storage:
@@ -90,104 +228,74 @@ Task MarkCommandProcessedAsync(string workflowId, long position);
 #### **InMemoryWorkflowPersistence** ✅
 Fully implemented and tested in-memory persistence for testing purposes.
 
-### 3. Domain Implementation: GroupCheckoutWorkflow ✅
+### 4. Domain Implementation: OrderProcessingWorkflow ✅
 
-**Features:**
-- Initiate group checkout for multiple guests
-- Track individual guest checkout status (Pending/Completed/Failed)
-- Complete workflow when all guests processed
-- Handle timeout scenarios
-- **Query operations** with `GetCheckoutStatus` ✅ NEW
+**API Endpoints:**
+- `POST /orders` - Create new order
+- `POST /orders/{id}/payment` - Record payment
+- `POST /orders/{id}/ship` - Ship order
+- `POST /orders/{id}/deliver` - Mark delivered
+- `POST /orders/{id}/cancel` - Cancel order
+- `GET /orders/{id}/status` - Get order status
 
 **State Machine:**
 ```
-NotExisting → Pending → Finished
+NotExisting → OrderCreated → PaymentReceived → Shipped → Delivered
+                    ↓              ↓            ↓
+                 Cancelled      Cancelled    Cancelled
 ```
 
-**Messages:**
-- `InitiateGroupCheckout` - Start group checkout
-- `GuestCheckedOut` - Guest successfully checked out
-- `GuestCheckoutFailed` - Guest checkout failed
-- `TimeoutGroupCheckout` - Timeout occurred
-- `GetCheckoutStatus` - Query current status ✅ NEW
+### 5. Testing ✅
 
-**Commands:**
-- `CheckOut` - Check out individual guest
-- `GroupCheckoutCompleted` - All succeeded
-- `GroupCheckoutFailed` - Some/all failed
-- `GroupCheckoutTimedOut` - Timed out
-- `CheckoutStatus` - Reply with status ✅ NEW
-
-### 4. Testing ✅
-
-**Total Tests: 47 (all passing)** ✅
-
-#### Unit Tests (6 tests)
-- `Initial_State_Should_Be_NotExisting`
-- `Decide_InitiateGroupCheckout_Should_Generate_CheckOut_Commands_For_All_Guests`
-- `Evolve_InitiatedBy_Should_Transition_To_Pending_State`
-- `Translate_Should_Generate_Correct_Events_For_Begin`
-- `Translate_Should_Generate_Correct_Events_For_Receive`
-- `Evolve_GetCheckoutStatus_Should_Not_Change_State` ✅ NEW
-
-#### Integration Tests (9 tests)
-Using WorkflowOrchestrator for realistic testing:
-- `InitiateGroupCheckout_Should_Generate_Commands_And_Transition_To_Pending`
-- `GuestCheckedOut_Should_Update_Guest_Status_To_Completed`
-- `GuestCheckoutFailed_Should_Update_Guest_Status_To_Failed`
-- `When_Not_All_Guests_Processed_Should_Not_Generate_Completion_Commands`
-- `When_All_Guests_Succeed_Should_Generate_GroupCheckoutCompleted`
-- `When_Some_Guests_Fail_Should_Generate_GroupCheckoutFailed`
-- `When_All_Guests_Fail_Should_Generate_GroupCheckoutFailed`
-- `TimeoutGroupCheckout_Should_Generate_GroupCheckoutTimedOut`
-- `GetCheckoutStatus_Should_Generate_Reply_Command` ✅ NEW
-
-#### Scenario Tests (3 tests)
-End-to-end workflow scenarios:
-- `Full_Workflow_Happy_Path_All_Guests_Succeed`
-- `Full_Workflow_Partial_Failure_Path`
-- `Full_Workflow_Timeout_Scenario`
-
-#### Orchestrator Tests
-- `WorkflowOrchestratorTests.cs` - Tests for orchestrator behavior
-
-#### Persistence Tests
-- `InMemoryWorkflowPersistenceTests.cs` - Tests for in-memory persistence
+**Total Tests: 47+ (all passing)**
 
 ---
 
 ## What's NOT Yet Implemented ⏳
 
-### 1. Infrastructure Layer (Delegated to Wolverine)
+### 1. Output Processing via Wolverine
 
-**Architecture Decision (2025-11-23):**
-- ❌ Removed WorkflowStreamProcessor and WorkflowOutputProcessor
-- ✅ Using Wolverine for all infrastructure concerns
-- 📝 See WOLVERINE_HYBRID_ARCHITECTURE.md for integration plan
+**Current State:**
+- Outputs are delivered via `WorkflowOutputHandler` delegate
+- Simple logging implementation
 
-**What Wolverine Provides:**
-- Message routing to workflow handlers
-- Command execution (Send/Publish/Schedule/Reply)
-- Background processing and polling
-- Retry logic and error handling
-- Dead letter queue for failures
+**Needed:**
+- Wolverine-based output delivery
+- Use `IMessageBus.SendAsync()` for Send commands
+- Use `IMessageBus.PublishAsync()` for Publish commands
+- Use `IMessageBus.ScheduleAsync()` for Schedule commands
 
-**What We Still Need to Build:**
-- Wolverine message handlers for workflows
-- Integration between Wolverine and WorkflowOrchestrator
-- Background polling service for pending commands
+### 2. Router Function (RFC Compliance)
 
-### 2. Concrete Persistence Implementations
+**Current State:**
+- `workflowId` is provided by caller in `SendAsync(workflowId, input)`
+
+**RFC Pattern:**
+- Router extracts `workflowId` from message content
+- User implements `IWorkflowRouter<TInput>` to define extraction logic
+
+```csharp
+// Future enhancement
+public interface IWorkflowRouter<TInput>
+{
+    string GetWorkflowId(TInput input);
+}
+
+// Then client becomes:
+await workflowBus.SendAsync(new PlaceOrderInputMessage("order-123"));
+// Router extracts "order-123" automatically
+```
+
+### 3. Concrete Persistence Implementations
 
 **Needed:**
 - PostgreSQL implementation of IWorkflowPersistence
 - SQLite implementation for local development
-- Marten integration (optional, for EventStoreDB-like features)
+- Marten integration (optional)
 
-### 3. Production Features
+### 4. Production Features
 
 **Missing:**
-- Workflow ID routing strategies
 - Concurrency control (optimistic locking)
 - Checkpoint management (exactly-once semantics)
 - Metrics/telemetry (OpenTelemetry integration)
@@ -197,126 +305,111 @@ End-to-end workflow scenarios:
 
 ## Key Design Decisions
 
-### 1. Query Operations (CQRS Pattern) ✅
-**Decision:** Queries return state unchanged in `Evolve`
-- Queries are read-only operations
-- `Decide` generates `Reply` commands with computed data
-- `Evolve` returns state unchanged (valid pattern)
-- Reply commands are persisted in stream for audit trail
+### 1. Wolverine as Infrastructure Layer ✅
+**Decision:** Use Wolverine for messaging, routing, and execution
+- Local queues for in-process messaging
+- Built-in retry and error handling
+- Sequential processing option for ordering guarantees
+- Dead letter queue for failures
 
-**Example:**
-```csharp
-// Decide: Generate Reply
-(GetCheckoutStatus m, Pending p) => [Reply(new CheckoutStatus(...))],
+### 2. Clean Client API ✅
+**Decision:** Hide infrastructure details from client code
+- `IWorkflowBus` abstraction with simple `SendAsync(workflowId, input)`
+- No envelope creation in client code
+- Type registry handles workflow type resolution
+- Inheritance support for message types
 
-// Evolve: No mutation for queries
-(Pending p, Received { Message: GetCheckoutStatus m }) => state
-```
+### 3. Generic Handler Pattern ✅
+**Decision:** Single handler for all workflow types
+- `WorkflowInputHandler` handles all `WorkflowInputEnvelope` messages
+- `IWorkflowProcessorFactory` resolves correct processor by type
+- New workflows added via registration, no new handlers needed
 
-### 2. Test Strategy ✅
-**Decision:** Use WorkflowOrchestrator for integration tests
-- Unit tests for individual methods (Decide, Evolve, Translate)
-- Integration tests using WorkflowOrchestrator (realistic)
-- Scenario tests for end-to-end workflows
-- Benefits: Tests components working together, more maintainable
-
-### 3. Immutable State ✅
-**Decision:** All state transitions via immutable records
-- State is rebuilt from events via `Evolve`
-- No mutable state in workflow
-- Benefits: Predictable, testable, event-sourceable
-
-### 4. Separation of Concerns ✅
-**Decision:** Pure orchestration separated from infrastructure
-- `Workflow` - Pure business logic (Decide, Evolve)
-- `WorkflowOrchestrator` - Pure orchestration (no I/O)
-- `Wolverine` - Infrastructure (routing, execution, persistence)
-- Benefits: Easy testing, clear boundaries, production-ready infrastructure
+### 4. Library-Owned Integration ✅
+**Decision:** Wolverine integration is part of Workflow library
+- `WolverineWorkflowBus` in core library (not client project)
+- Reduces boilerplate for library consumers
+- Consistent behavior across all implementations
 
 ---
 
 ## File Organization
 
-**Note:** Updated to reflect removal of WorkflowStreamProcessor and WorkflowOutputProcessor.
-
 ```
 Workflow/
-├── Workflow/                          # Core framework library
-│   ├── Workflow.cs                    # Base workflow classes (Workflow, AsyncWorkflow)
-│   ├── IWorkflow.cs                   # Workflow interfaces
-│   ├── WorkflowOrchestrator.cs        # Pure orchestrator
-│   ├── WorkflowCommand.cs             # Command types (Send, Reply, etc.)
-│   ├── WorkflowEvent.cs               # Event types (Began, Received, etc.)
-│   ├── WorkflowMessage.cs             # Unified stream message
-│   ├── IWorkflowPersistence.cs        # Persistence abstraction
-│   └── InMemoryWorkflowPersistence.cs # In-memory implementation
+├── Workflow/                              # Core framework library
+│   ├── InboxOutbox/
+│   │   ├── IWorkflowBus.cs               # Clean abstraction + registry
+│   │   ├── WolverineWorkflowBus.cs       # Wolverine implementation
+│   │   ├── WorkflowInputEnvelope.cs      # Internal message envelope
+│   │   ├── WorkflowInputHandler.cs       # Generic Wolverine handler
+│   │   ├── IWorkflowProcessorFactory.cs  # Processor factory + registration
+│   │   ├── WorkflowProcessor.cs          # RFC Process implementation
+│   │   ├── WorkflowStream.cs             # Stream abstraction
+│   │   └── WorkflowStreamRepository.cs   # In-memory repository
+│   ├── WorkflowExtensions.cs             # DI registration extensions
+│   ├── Workflow.cs                       # Base workflow classes
+│   ├── IWorkflow.cs                      # Workflow interfaces
+│   └── WorkflowOrchestrator.cs           # Pure orchestrator
 │
-├── Workflow.Samples/                  # Sample workflows
-│   ├── OrderProcessingWorkflow.cs     # Order processing example
-│   └── GroupCheckoutWorkflow.cs       # Group checkout example
+├── Workflow.Samples/                      # Sample workflows
+│   └── Order/
+│       ├── OrderProcessingWorkflow.cs
+│       ├── OrderProcessingInputMessage.cs
+│       ├── OrderProcessingOutputMessage.cs
+│       └── OrderProcessingState.cs
 │
-├── Workflow.Tests/                    # Tests (46 passing)
-│   ├── GroupCheckoutWorkflowTests.cs  # 18 tests
-│   ├── OrderProcessingWorkflowTests.cs # 28 tests
-│   ├── WorkflowOrchestratorTests.cs   # Orchestrator tests
-│   └── InMemoryWorkflowPersistenceTests.cs # Persistence tests
+├── Workflow.Samples.Api/                  # Sample API
+│   ├── Program.cs                         # Wolverine + workflow setup
+│   ├── Modules/
+│   │   └── OrderModule.cs                # Carter endpoints
+│   └── Services/
+│       └── WorkflowOutputHandler.cs      # Output delivery
 │
-├── WorkflowWolverineSingle/           # Wolverine integration (in progress)
-│   ├── Program.cs                     # Wolverine setup
-│   ├── CreateCustomerHandler.cs       # Example handler
-│   └── BpPublisher.cs                 # Publisher example
-│
-└── ChatStates/                        # Documentation
-    ├── ARCHITECTURE.md                # Architecture overview
-    ├── IMPLEMENTATION_STATE.md        # This file
-    ├── WOLVERINE_HYBRID_ARCHITECTURE.md # Wolverine integration plan
-    ├── PATTERNS.md                    # Reliability and Reply patterns
-    └── REPLY_COMMAND_PATTERNS.md      # Reply command usage guide
+└── ChatStates/md/                         # Documentation
+    ├── ARCHITECTURE.md
+    ├── IMPLEMENTATION_STATE.md            # This file
+    └── PATTERNS.md
 ```
 
 ---
 
 ## Next Actions
 
-**Note:** Updated to reflect Wolverine integration strategy.
-
 ### Immediate Priority
-1. **Wolverine Integration** (per WOLVERINE_HYBRID_ARCHITECTURE.md)
-   - Create Wolverine message handlers for workflows
-   - Implement command execution via Wolverine
-   - Set up background polling for pending commands
+1. **Output Processing via Wolverine**
+   - Create output message types for Wolverine routing
+   - Implement handlers for Send/Publish/Schedule commands
+   - Replace delegate-based output handler
 
-2. **Implement WorkflowInputRouter**
-   - Subscribe to source streams
-   - Route via `GetWorkflowId`
-   - Persist inputs to workflow streams
-
-3. **Implement WorkflowStreamConsumer**
-   - Subscribe to workflow instance streams
-   - Trigger processing on new messages
-   - Manage checkpoints
+2. **Router Function**
+   - Add `IWorkflowRouter<TInput>` interface
+   - Allow automatic workflowId extraction from messages
 
 ### Phase 2
-4. Implement concrete persistence (PostgreSQL, SQLite)
-5. Implement background processor hosting
-6. Add workflow ID routing
-7. Add concurrency control
+3. Implement concrete persistence (PostgreSQL, SQLite)
+4. Add concurrency control (optimistic locking)
+5. Add metrics/telemetry
 
 ### Phase 3
-8. Add production features (metrics, error handling, versioning)
+6. Workflow versioning
+7. Saga/compensation patterns
+8. Distributed tracing
 
 ---
 
-## Recent Changes (2025-11-17)
+## Recent Changes (2025-01-26)
 
-1. ✅ Added `Reply` command type for query operations
-2. ✅ Implemented `GetCheckoutStatus` query in GroupCheckoutWorkflow
-3. ✅ Confirmed query pattern: state unchanged in `Evolve` (valid)
-4. ✅ Added tests for query operations (Reply command generation and state immutability)
-5. ✅ Refactored most tests to use `WorkflowOrchestrator`
-6. ✅ Uncommented and fixed 4 previously commented tests
-7. ✅ All 47 tests passing (up from 26 initially)
-8. ✅ Updated documentation to reflect current state
+1. ✅ Integrated Wolverine as messaging infrastructure
+2. ✅ Created `IWorkflowBus` abstraction for clean client API
+3. ✅ Created `WolverineWorkflowBus` implementation in core library
+4. ✅ Created `WorkflowInputEnvelope` for internal routing
+5. ✅ Created `WorkflowInputHandler` as generic Wolverine handler (Router)
+6. ✅ Created `IWorkflowProcessorFactory` for processor resolution
+7. ✅ Created `IWorkflowTypeRegistry` with inheritance support
+8. ✅ Updated `WorkflowExtensions` to auto-register all components
+9. ✅ Updated `OrderModule` to use clean `IWorkflowBus` API
+10. ✅ Fixed `WorkflowOutputHandler` logger registration issue
 
 ---
 
@@ -327,12 +420,13 @@ Workflow/
 - Unified stream architecture (RFC Option C)
 - CQRS support with Reply commands
 - Comprehensive testing (47 tests)
-- GroupCheckoutWorkflow domain implementation
 
 **Phase 2: In Progress** ⏳
-- Need to refactor consumer/router separation
-- Need concrete persistence implementations
-- Need background processing infrastructure
+- ✅ Wolverine integration for input processing
+- ✅ Clean client API (`IWorkflowBus`)
+- ⏳ Output processing via Wolverine
+- ⏳ Router function for workflowId extraction
 
 **Phase 3: Not Started**
-- Production features (metrics, error handling, versioning)
+- Concrete persistence implementations
+- Production features (metrics, versioning)

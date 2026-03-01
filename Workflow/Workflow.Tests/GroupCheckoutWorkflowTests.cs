@@ -25,7 +25,7 @@ public class GroupCheckoutWorkflowTests
     {
         // Arrange
         var state = new NotExisting();
-        var input = new InitiateGroupCheckout("group-123", [new Guest("guest-1"), new Guest("guest-2")]);
+        var input = new InitiateGroupCheckout([new Guest("guest-1"), new Guest("guest-2")]) { WorkflowId = "group-123" };
 
         // Act
         var commands = _workflow.Decide(input, state);
@@ -46,7 +46,7 @@ public class GroupCheckoutWorkflowTests
         // Arrange
         var state = new NotExisting();
         var initiateEvent = new InitiatedBy<GroupCheckoutInputMessage, GroupCheckoutOutputMessage>(
-            new InitiateGroupCheckout("group-123", [new Guest("guest-1"), new Guest("guest-2")]));
+            new InitiateGroupCheckout([new Guest("guest-1"), new Guest("guest-2")]) { WorkflowId = "group-123" });
 
         // Act
         var newState = _workflow.Evolve(state, initiateEvent);
@@ -66,7 +66,7 @@ public class GroupCheckoutWorkflowTests
     {
         // Arrange
         var snapshot = _orchestrator.CreateInitialSnapshot(_workflow);
-        var input = new InitiateGroupCheckout("group-123", [new Guest("guest-1"), new Guest("guest-2")]);
+        var input = new InitiateGroupCheckout([new Guest("guest-1"), new Guest("guest-2")]) { WorkflowId = "group-123" };
 
         // Act
         var result = _orchestrator.Run(_workflow, snapshot, input, begins: true);
@@ -94,7 +94,7 @@ public class GroupCheckoutWorkflowTests
             new Pending("group-123", [new Guest("guest-1"), new Guest("guest-2")]),
             []
         );
-        var input = new GuestCheckedOut("guest-1");
+        var input = new GuestCheckedOut("guest-1") { WorkflowId = "group-123" };
 
         // Act
         var result = _orchestrator.Run(_workflow, snapshot, input, begins: false);
@@ -114,7 +114,7 @@ public class GroupCheckoutWorkflowTests
             new Pending("group-123", [new Guest("guest-1"), new Guest("guest-2")]),
             []
         );
-        var input = new GuestCheckoutFailed("guest-1", "Payment failed");
+        var input = new GuestCheckoutFailed("guest-1", "Payment failed") { WorkflowId = "group-123" };
 
         // Act
         var result = _orchestrator.Run(_workflow, snapshot, input, begins: false);
@@ -134,7 +134,7 @@ public class GroupCheckoutWorkflowTests
             new Pending("group-123", [new Guest("guest-1"), new Guest("guest-2")]),
             []
         );
-        var input = new GuestCheckedOut("guest-1");
+        var input = new GuestCheckedOut("guest-1") { WorkflowId = "group-123" };
 
         // Act
         var result = _orchestrator.Run(_workflow, snapshot, input, begins: false);
@@ -152,7 +152,7 @@ public class GroupCheckoutWorkflowTests
                 [new Guest("guest-1", GuestStayStatus.Completed), new Guest("guest-2", GuestStayStatus.Completed)]),
             []
         );
-        var input = new GuestCheckedOut("guest-2");
+        var input = new GuestCheckedOut("guest-2") { WorkflowId = "group-123" };
 
         // Act
         var result = _orchestrator.Run(_workflow, snapshot, input, begins: false);
@@ -183,7 +183,7 @@ public class GroupCheckoutWorkflowTests
                 [new Guest("guest-1", GuestStayStatus.Completed), new Guest("guest-2", GuestStayStatus.Pending)]),
             []
         );
-        var input = new GuestCheckoutFailed("guest-2", "Balance not settled");
+        var input = new GuestCheckoutFailed("guest-2", "Balance not settled") { WorkflowId = "group-123" };
 
         // Act
         var result = _orchestrator.Run(_workflow, snapshot, input, begins: false);
@@ -214,7 +214,7 @@ public class GroupCheckoutWorkflowTests
                 [new Guest("guest-1", GuestStayStatus.Failed), new Guest("guest-2", GuestStayStatus.Pending)]),
             []
         );
-        var input = new GuestCheckoutFailed("guest-2", "Balance not settled");
+        var input = new GuestCheckoutFailed("guest-2", "Balance not settled") { WorkflowId = "group-123" };
 
         // Act
         var result = _orchestrator.Run(_workflow, snapshot, input, begins: false);
@@ -242,7 +242,7 @@ public class GroupCheckoutWorkflowTests
                 [new Guest("guest-1", GuestStayStatus.Failed), new Guest("guest-2"), new Guest("guest-3")]),
             []
         );
-        var input = new TimeoutGroupCheckout("group-123");
+        var input = new TimeoutGroupCheckout { WorkflowId = "group-123" };
 
         // Act
         var result = _orchestrator.Run(_workflow, snapshot, input, begins: false);
@@ -268,7 +268,7 @@ public class GroupCheckoutWorkflowTests
     {
         // Unit test for Translate method
         // Arrange
-        var input = new InitiateGroupCheckout("group-123", [new Guest("guest-1"), new Guest("guest-2")]);
+        var input = new InitiateGroupCheckout([new Guest("guest-1"), new Guest("guest-2")]) { WorkflowId = "group-123" };
         var commands = new List<WorkflowCommand<GroupCheckoutOutputMessage>>
         {
             new Send<GroupCheckoutOutputMessage>(new CheckOut("guest-1")),
@@ -291,7 +291,7 @@ public class GroupCheckoutWorkflowTests
     {
         // Unit test for Translate method
         // Arrange
-        var input = new GuestCheckedOut("guest-1");
+        var input = new GuestCheckedOut("guest-1") { WorkflowId = "group-123" };
         var commands = new List<WorkflowCommand<GroupCheckoutOutputMessage>>();
 
         // Act
@@ -307,11 +307,9 @@ public class GroupCheckoutWorkflowTests
     [Fact]
     public void Full_Workflow_Happy_Path_All_Guests_Succeed()
     {
-        // This test demonstrates the complete workflow with event sourcing
-
         // Step 1: Initiate group checkout
         var snapshot = _orchestrator.CreateInitialSnapshot(_workflow);
-        var initiateInput = new InitiateGroupCheckout("group-123", [new Guest("guest-1"), new Guest("guest-2")]);
+        var initiateInput = new InitiateGroupCheckout([new Guest("guest-1"), new Guest("guest-2")]) { WorkflowId = "group-123" };
 
         var result1 = _orchestrator.Run(_workflow, snapshot, initiateInput, begins: true);
 
@@ -320,7 +318,7 @@ public class GroupCheckoutWorkflowTests
         result1.Events.Should().HaveCount(4); // Began + InitiatedBy + 2x Sent
 
         // Step 2: First guest checks out successfully
-        var guest1CheckedOut = new GuestCheckedOut("guest-1");
+        var guest1CheckedOut = new GuestCheckedOut("guest-1") { WorkflowId = "group-123" };
         var result2 = _orchestrator.Run(_workflow, result1.Snapshot, guest1CheckedOut, begins: false);
 
         result2.Snapshot.State.Should().BeOfType<Pending>();
@@ -330,7 +328,7 @@ public class GroupCheckoutWorkflowTests
         result2.Commands.Should().BeEmpty(); // Not complete yet
 
         // Step 3: Second guest checks out successfully - workflow completes
-        var guest2CheckedOut = new GuestCheckedOut("guest-2");
+        var guest2CheckedOut = new GuestCheckedOut("guest-2") { WorkflowId = "group-123" };
         var result3 = _orchestrator.Run(_workflow, result2.Snapshot, guest2CheckedOut, begins: false);
 
         result3.Snapshot.State.Should().BeOfType<Finished>();
@@ -361,11 +359,9 @@ public class GroupCheckoutWorkflowTests
     [Fact]
     public void Full_Workflow_Partial_Failure_Path()
     {
-        // This test demonstrates a workflow where one guest succeeds and one fails
-
         // Step 1: Initiate group checkout
         var snapshot = _orchestrator.CreateInitialSnapshot(_workflow);
-        var initiateInput = new InitiateGroupCheckout("group-123", [new Guest("guest-1"), new Guest("guest-2")]);
+        var initiateInput = new InitiateGroupCheckout([new Guest("guest-1"), new Guest("guest-2")]) { WorkflowId = "group-123" };
 
         var result1 = _orchestrator.Run(_workflow, snapshot, initiateInput, begins: true);
 
@@ -373,7 +369,7 @@ public class GroupCheckoutWorkflowTests
         result1.Commands.Should().HaveCount(2); // CheckOut commands for both guests
 
         // Step 2: First guest checks out successfully
-        var guest1CheckedOut = new GuestCheckedOut("guest-1");
+        var guest1CheckedOut = new GuestCheckedOut("guest-1") { WorkflowId = "group-123" };
         var result2 = _orchestrator.Run(_workflow, result1.Snapshot, guest1CheckedOut, begins: false);
 
         result2.Snapshot.State.Should().BeOfType<Pending>();
@@ -382,12 +378,11 @@ public class GroupCheckoutWorkflowTests
         pendingState.Guests.First(x => x.Id == "guest-2").GuestStayStatus.Should().Be(GuestStayStatus.Pending);
 
         // Step 3: Second guest checkout fails - workflow completes with failure
-        var guest2Failed = new GuestCheckoutFailed("guest-2", "Balance not settled");
+        var guest2Failed = new GuestCheckoutFailed("guest-2", "Balance not settled") { WorkflowId = "group-123" };
         var result3 = _orchestrator.Run(_workflow, result2.Snapshot, guest2Failed, begins: false);
 
         result3.Snapshot.State.Should().BeOfType<Finished>();
 
-        // Verify the failure event contains correct information
         result3.Commands.Should().HaveCount(2); // Send(GroupCheckoutFailed) + Complete
 
         result3.Commands[0].Should().BeOfType<Send<GroupCheckoutOutputMessage>>();
@@ -406,17 +401,15 @@ public class GroupCheckoutWorkflowTests
     [Fact]
     public void Full_Workflow_Timeout_Scenario()
     {
-        // This test demonstrates a workflow that times out with pending guests
-
         // Step 1: Initiate group checkout for 3 guests
         var snapshot = _orchestrator.CreateInitialSnapshot(_workflow);
-        var initiateInput = new InitiateGroupCheckout("group-123", [new Guest("guest-1"), new Guest("guest-2"), new Guest("guest-3")]);
+        var initiateInput = new InitiateGroupCheckout([new Guest("guest-1"), new Guest("guest-2"), new Guest("guest-3")]) { WorkflowId = "group-123" };
 
         var result1 = _orchestrator.Run(_workflow, snapshot, initiateInput, begins: true);
         result1.Snapshot.State.Should().BeOfType<Pending>();
 
         // Step 2: Only first guest checks out
-        var guest1CheckedOut = new GuestCheckedOut("guest-1");
+        var guest1CheckedOut = new GuestCheckedOut("guest-1") { WorkflowId = "group-123" };
         var result2 = _orchestrator.Run(_workflow, result1.Snapshot, guest1CheckedOut, begins: false);
 
         result2.Snapshot.State.Should().BeOfType<Pending>();
@@ -424,7 +417,7 @@ public class GroupCheckoutWorkflowTests
         pendingState.Guests.First(x => x.Id == "guest-1").GuestStayStatus.Should().Be(GuestStayStatus.Completed);
 
         // Step 3: Timeout occurs with 2 guests still pending
-        var timeout = new TimeoutGroupCheckout("group-123");
+        var timeout = new TimeoutGroupCheckout { WorkflowId = "group-123" };
         var result3 = _orchestrator.Run(_workflow, result2.Snapshot, timeout, begins: false);
 
         // Assert final state
@@ -441,49 +434,4 @@ public class GroupCheckoutWorkflowTests
         timeoutMessage.PendingCheckouts.Should().Contain("guest-2");
         timeoutMessage.PendingCheckouts.Should().Contain("guest-3");
     }
-
-    // COMMENTED OUT: GetCheckoutStatus Reply tests
-    // These tests were for learning the Reply pattern, but Reply is NOT the right approach
-    // for HTTP API status queries. Reply is designed for async workflow-to-workflow communication.
-    //
-    // For HTTP API status endpoints, use direct stream reads:
-    // var messages = await persistence.ReadStreamAsync("group-123");
-    // var state = RebuildState(messages);
-    // return Ok(state);
-    //
-    // See ChatStates/REPLY_COMMAND_PATTERNS.md for when to use Reply properly
-    //
-    // [Fact]
-    // public void GetCheckoutStatus_Should_Generate_Reply_Command()
-    // {
-    //     var snapshot = new WorkflowSnapshot<GroupCheckoutInputMessage, GroupCheckoutState, GroupCheckoutOutputMessage>(
-    //         new Pending("group-123",
-    //         [
-    //             new Guest("guest-1", GuestStayStatus.Completed),
-    //             new Guest("guest-2", GuestStayStatus.Failed),
-    //             new Guest("guest-3", GuestStayStatus.Pending)
-    //         ]),
-    //         []
-    //     );
-    //     var input = new GetCheckoutStatus("group-123");
-    //
-    //     var result = _orchestrator.Process(_workflow, snapshot, input, begins: false);
-    //
-    //     result.Commands.Should().HaveCount(1);
-    //     result.Commands[0].Should().BeOfType<Reply<GroupCheckoutOutputMessage>>();
-    //     // ... rest of assertions
-    // }
-    //
-    // [Fact]
-    // public void Evolve_GetCheckoutStatus_Should_Not_Change_State()
-    // {
-    //     var state = new Pending("group-123", [new Guest("guest-1"), new Guest("guest-2")]);
-    //     var receivedEvent = new Received<GroupCheckoutInputMessage, GroupCheckoutOutputMessage>(
-    //         new GetCheckoutStatus("group-123"));
-    //
-    //     var newState = _workflow.Evolve(state, receivedEvent);
-    //
-    //     newState.Should().Be(state);
-    //     newState.Should().BeOfType<Pending>();
-    // }
 }

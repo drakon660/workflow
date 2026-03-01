@@ -12,7 +12,7 @@ public class GroupCheckoutWorkflow : Workflow<GroupCheckoutInputMessage, GroupCh
         {
             // Workflow initiated
             (NotExisting, InitiatedBy<GroupCheckoutInputMessage, GroupCheckoutOutputMessage> { Message: InitiateGroupCheckout m }) =>
-                new Pending(m.GroupCheckoutId, m.Guests),
+                new Pending(m.WorkflowId, m.Guests),
 
             // Guest checkout completed - update status and transition to Finished if all done
             (Pending p, Received<GroupCheckoutInputMessage, GroupCheckoutOutputMessage> { Message: GuestCheckedOut m }) =>
@@ -75,7 +75,7 @@ public class GroupCheckoutWorkflow : Workflow<GroupCheckoutInputMessage, GroupCh
              // Timeout - mark as timed out
              (TimeoutGroupCheckout m, Pending p) =>
                  [
-                     Send(new GroupCheckoutTimedOut(m.GroupCheckoutId, GetPendingGuests(p))),
+                     Send(new GroupCheckoutTimedOut(m.WorkflowId, GetPendingGuests(p))),
                      Complete()
                  ],
 
@@ -186,11 +186,14 @@ public enum GuestStayStatus
 }
 
 // Input message types
-public abstract record GroupCheckoutInputMessage;
-public record InitiateGroupCheckout(string GroupCheckoutId, IReadOnlyList<Guest> Guests) : GroupCheckoutInputMessage;
+public abstract record GroupCheckoutInputMessage : IWorkflowInput
+{
+    public required string WorkflowId { get; init; }
+}
+public record InitiateGroupCheckout(IReadOnlyList<Guest> Guests) : GroupCheckoutInputMessage;
 public record GuestCheckedOut(string GuestStayAccountId) : GroupCheckoutInputMessage;
 public record GuestCheckoutFailed(string GuestStayAccountId, string Reason) : GroupCheckoutInputMessage;
-public record TimeoutGroupCheckout(string GroupCheckoutId) : GroupCheckoutInputMessage;
+public record TimeoutGroupCheckout : GroupCheckoutInputMessage;
 
 // COMMENTED OUT: GetCheckoutStatus - See ChatStates/REPLY_COMMAND_PATTERNS.md
 // public record GetCheckoutStatus(string GroupCheckoutId) : GroupCheckoutInputMessage;

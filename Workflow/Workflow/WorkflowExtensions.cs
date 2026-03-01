@@ -11,7 +11,7 @@ public static class WorkflowExtensions
     /// Note: This only registers infrastructure components.
     /// User workflow implementations should be registered separately using AddScoped&lt;TWorkflow&gt;().
     /// </summary>
-    public static IServiceCollection AddWorkflow<TInput, TState, TOutput>(this IServiceCollection services)
+    public static IServiceCollection AddWorkflow<TInput, TState, TOutput>(this IServiceCollection services) where TInput : IWorkflowInput
     {
         services.AddSingleton<WorkflowStreamRepository>();
         services.AddScoped<WorkflowOrchestrator<TInput, TState, TOutput>>();
@@ -24,6 +24,7 @@ public static class WorkflowExtensions
     /// Adds workflow infrastructure services and registers a user workflow implementation.
     /// </summary>
     public static IServiceCollection AddWorkflow<TInput, TState, TOutput, TWorkflow>(this IServiceCollection services)
+        where TInput : IWorkflowInput
         where TWorkflow : class, IWorkflow<TInput, TState, TOutput>
     {
         // Add infrastructure
@@ -44,6 +45,7 @@ public static class WorkflowExtensions
     public static IServiceCollection AddWorkflow<TInput, TState, TOutput, TWorkflow>(
         this IServiceCollection services,
         string workflowType)
+        where TInput : IWorkflowInput
         where TWorkflow : class, IWorkflow<TInput, TState, TOutput>
     {
         // Add base workflow registration
@@ -87,6 +89,7 @@ public static class WorkflowExtensions
     /// Adds workflow infrastructure services and registers a user async workflow implementation.
     /// </summary>
     public static IServiceCollection AddAsyncWorkflow<TInput, TState, TOutput, TContext, TWorkflow>(this IServiceCollection services)
+        where TInput : IWorkflowInput
         where TWorkflow : class, IAsyncWorkflow<TInput, TState, TOutput, TContext>
     {
         // Add infrastructure
@@ -105,6 +108,7 @@ public static class WorkflowExtensions
     /// Use this when you have multiple workflow types in the same application.
     /// </summary>
     public static IServiceCollection AddWorkflowImplementation<TInput, TState, TOutput, TWorkflow>(this IServiceCollection services)
+        where TInput : IWorkflowInput
         where TWorkflow : class, IWorkflow<TInput, TState, TOutput>
     {
         services.AddScoped<IWorkflow<TInput, TState, TOutput>, TWorkflow>();
@@ -118,6 +122,7 @@ public static class WorkflowExtensions
     /// Use this when you have multiple workflow types in the same application.
     /// </summary>
     public static IServiceCollection AddAsyncWorkflowImplementation<TInput, TState, TOutput, TContext, TWorkflow>(this IServiceCollection services)
+        where TInput : IWorkflowInput
         where TWorkflow : class, IAsyncWorkflow<TInput, TState, TOutput, TContext>
     {
         services.AddScoped<IAsyncWorkflow<TInput, TState, TOutput, TContext>, TWorkflow>();

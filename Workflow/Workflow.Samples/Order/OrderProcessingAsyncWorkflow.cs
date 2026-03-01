@@ -1,4 +1,4 @@
-﻿namespace Workflow.Samples.Order;
+namespace Workflow.Samples.Order;
 
 public sealed class OrderProcessingAsyncWorkflow : AsyncWorkflow<OrderProcessingInputMessage, OrderProcessingState,
     OrderProcessingOutputMessage, IOrderContext>
@@ -9,31 +9,31 @@ public sealed class OrderProcessingAsyncWorkflow : AsyncWorkflow<OrderProcessing
         return (state, workflowEvent) switch
         {
             (NoOrder n, InitiatedBy<OrderProcessingInputMessage, OrderProcessingOutputMessage> { Message: PlaceOrderInputMessage m })
-                => new OrderCreated(m.OrderId),
+                => new OrderCreated(m.WorkflowId),
 
             (OrderCreated s, Received<OrderProcessingInputMessage, OrderProcessingOutputMessage> { Message: InsufficientInventoryInputMessage m })
-                => new AwaitingWarehouseInventory(m.OrderId),
+                => new AwaitingWarehouseInventory(m.WorkflowId),
 
             (AwaitingWarehouseInventory s, Received<OrderProcessingInputMessage, OrderProcessingOutputMessage> { Message: WarehouseInventoryReceivedInputMessage m })
-                => new PaymentConfirmed(m.OrderId),
+                => new PaymentConfirmed(m.WorkflowId),
 
             (AwaitingWarehouseInventory s, Received<OrderProcessingInputMessage, OrderProcessingOutputMessage> { Message: WarehouseInventoryUnavailableInputMessage m })
-                => new OrderCancelled(m.OrderId, "Warehouse_Inventory_Unavailable"),
+                => new OrderCancelled(m.WorkflowId, "Warehouse_Inventory_Unavailable"),
 
             (OrderCreated s, Received<OrderProcessingInputMessage, OrderProcessingOutputMessage> { Message: PaymentReceivedInputMessage m })
-                => new PaymentConfirmed(m.OrderId),
+                => new PaymentConfirmed(m.WorkflowId),
 
             (PaymentConfirmed s, Received<OrderProcessingInputMessage, OrderProcessingOutputMessage> { Message: OrderShippedInputMessage m })
-                => new Shipped(m.OrderId, m.TrackingNumber),
+                => new Shipped(m.WorkflowId, m.TrackingNumber),
 
             (Shipped s, Received<OrderProcessingInputMessage, OrderProcessingOutputMessage> { Message: OrderDeliveredInputMessage m })
-                => new Delivered(m.OrderId, s.TrackingNumber),
+                => new Delivered(m.WorkflowId, s.TrackingNumber),
 
             (OrderCreated s, Received<OrderProcessingInputMessage, OrderProcessingOutputMessage> { Message: OrderCancelledInputMessage m })
-                => new OrderCancelled(m.OrderId, m.Reason),
+                => new OrderCancelled(m.WorkflowId, m.Reason),
 
             (OrderCreated s, Received<OrderProcessingInputMessage, OrderProcessingOutputMessage> { Message: PaymentTimeoutInputMessage m })
-                => new OrderCancelled(m.OrderId, "Payment_Timeout"),
+                => new OrderCancelled(m.WorkflowId, "Payment_Timeout"),
 
             _ => state
         };
@@ -44,28 +44,27 @@ public sealed class OrderProcessingAsyncWorkflow : AsyncWorkflow<OrderProcessing
         {
             case (PlaceOrderInputMessage p, NoOrder):
                 // Check inventory availability before processing order
-                var hasInventory = await service.CheckInventoryAsync(p.OrderId, quantity: 1);
+                var hasInventory = await service.CheckInventoryAsync(p.WorkflowId, quantity: 1);
 
                 if (!hasInventory)
                 {
                     // No local inventory - request from warehouse
-                    // The external system should then send InsufficientInventoryInputMessage to transition state
                     return [
-                        Send(new NotifyInsufficientInventory(p.OrderId))
+                        Send(new NotifyInsufficientInventory(p.WorkflowId))
                     ];
                 }
 
                 return [
-                    Send(new ProcessPayment(p.OrderId)),
-                    Send(new NotifyOrderPlaced(p.OrderId)),
-                    Schedule(TimeSpan.FromMinutes(15), new PaymentTimeoutOutMessage(p.OrderId))
+                    Send(new ProcessPayment(p.WorkflowId)),
+                    Send(new NotifyOrderPlaced(p.WorkflowId)),
+                    Schedule(TimeSpan.FromMinutes(15), new PaymentTimeoutOutMessage(p.WorkflowId))
                 ];
 
             case (PaymentReceivedInputMessage p, OrderCreated):
-                return [Send(new ShipOrder(p.OrderId))];
+                return [Send(new ShipOrder(p.WorkflowId))];
 
             case (OrderShippedInputMessage p, PaymentConfirmed):
-                return [Send(new NotifyOrderShipped(p.OrderId, p.TrackingNumber))];
+                return [Send(new NotifyOrderShipped(p.WorkflowId, p.TrackingNumber))];
 
             case (OrderDeliveredInputMessage p, Shipped s):
                 return [
@@ -109,7 +108,7 @@ public sealed class OrderProcessingAsyncWorkflow : AsyncWorkflow<OrderProcessing
             case (CheckOrderStateInputMessage p, OrderProcessingState s):
                 return [
                     Reply(new OrderProcessingStatus(
-                        p.OrderId,
+                        p.WorkflowId,
                         s switch
                         {
                             NoOrder => "NotExisting",

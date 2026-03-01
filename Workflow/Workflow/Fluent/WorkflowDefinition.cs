@@ -3,7 +3,7 @@ namespace Workflow.Fluent;
 /// <summary>
 /// Captures the complete workflow definition as data - enables introspection and diagram generation.
 /// </summary>
-public class WorkflowDefinition<TInput, TState, TOutput>
+public class WorkflowDefinition<TInput, TState, TOutput> where TInput : IWorkflowInput
 {
     public Type InitialStateType { get; internal set; }
     public List<StateDefinition<TInput, TState, TOutput>> States { get; } = [];
@@ -28,7 +28,7 @@ public class WorkflowDefinition<TInput, TState, TOutput>
 /// <summary>
 /// Defines behavior for a specific state.
 /// </summary>
-public class StateDefinition<TInput, TState, TOutput>
+public class StateDefinition<TInput, TState, TOutput> where TInput : IWorkflowInput
 {
     public Type StateType { get; init; }
     public bool IsInitial { get; set; }
@@ -38,7 +38,7 @@ public class StateDefinition<TInput, TState, TOutput>
 /// <summary>
 /// Defines a transition: when a message arrives, what to do.
 /// </summary>
-public class TransitionDefinition<TInput, TState, TOutput>
+public class TransitionDefinition<TInput, TState, TOutput> where TInput : IWorkflowInput
 {
     public Type MessageType { get; init; }
     public Type TargetStateType { get; set; }

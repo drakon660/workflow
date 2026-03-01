@@ -1,0 +1,2 @@
+https://thinkbeforecoding.com/post/2021/12/17/functional-event-sourcing-decider
+https://www.kurrent.io/blog/how-to-model-event-sourced-systems-efficiently/#understand-the-business-workflow

@@ -1,6 +1,6 @@
 ﻿namespace Workflow;
 
-public abstract class WorkflowBase<TInput, TState, TOutput> 
+public abstract class WorkflowBase<TInput, TState, TOutput> where TInput : IWorkflowInput
 {
     public abstract TState InitialState { get; }
     
@@ -85,32 +85,32 @@ public abstract class WorkflowBase<TInput, TState, TOutput>
     }
 }
 
-public abstract class Workflow<TInput, TState, TOutput> : WorkflowBase<TInput, TState, TOutput>, IWorkflow<TInput, TState, TOutput>
+public abstract class Workflow<TInput, TState, TOutput> : WorkflowBase<TInput, TState, TOutput>, IWorkflow<TInput, TState, TOutput> where TInput : IWorkflowInput
 {
     public abstract IReadOnlyList<WorkflowCommand<TOutput>> Decide(TInput input, TState state);
 }
 
-public abstract class AsyncWorkflow<TInput, TState, TOutput, TContext> : WorkflowBase<TInput, TState, TOutput>, IAsyncWorkflow<TInput, TState, TOutput, TContext>
+public abstract class AsyncWorkflow<TInput, TState, TOutput, TContext> : WorkflowBase<TInput, TState, TOutput>, IAsyncWorkflow<TInput, TState, TOutput, TContext> where TInput : IWorkflowInput
 {
     public abstract Task<IReadOnlyList<WorkflowCommand<TOutput>>> DecideAsync(TInput input, TState state, TContext service);
 }
 
-public interface IAsyncWorkflow<TInput, TState, TOutput, TContext> : IWorkflowBase<TInput, TState, TOutput>
+public interface IAsyncWorkflow<TInput, TState, TOutput, TContext> : IWorkflowBase<TInput, TState, TOutput> where TInput : IWorkflowInput
 {
     Task<IReadOnlyList<WorkflowCommand<TOutput>>> DecideAsync(TInput input, TState state, TContext service);
 }
 
-public interface IWorkflow<TInput, TState, TOutput> : IWorkflowBase<TInput, TState, TOutput>
+public interface IWorkflow<TInput, TState, TOutput> : IWorkflowBase<TInput, TState, TOutput> where TInput : IWorkflowInput
 {
     IReadOnlyList<WorkflowCommand<TOutput>> Decide(TInput input, TState state);
 }
 
-public interface IWorkflowBase<TInput, TState, TOutput>
+public interface IWorkflowBase<TInput, TState, TOutput> where TInput : IWorkflowInput
 {
     TState InitialState { get; }
 
     TState Evolve(TState state, WorkflowEvent<TInput, TOutput> workflowEvent);
-    
+
     IReadOnlyList<WorkflowEvent<TInput, TOutput>> Translate(
         bool begins,
         TInput message,

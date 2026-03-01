@@ -6,6 +6,8 @@ var source = File.ReadAllText(sourceFile);
 
 var builder = WorkflowDiagram.FromSource(source);
 
+await GetMe();
+
 Console.WriteLine("=== Model Info ===");
 Console.WriteLine($"Workflow: {builder.Model.WorkflowName}");
 Console.WriteLine($"State Transitions: {builder.Model.StateTransitions.Count}");
@@ -18,3 +20,9 @@ Console.WriteLine();
 
 Console.WriteLine("=== Decision Tree ===");
 Console.WriteLine(builder.GenerateDecisionTree());
+
+
+ValueTask<object> GetMe()
+{
+    return ValueTask.FromResult(new object());
+}

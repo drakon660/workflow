@@ -3,7 +3,7 @@ namespace Workflow.Fluent;
 /// <summary>
 /// Builder for configuring transitions from a specific state.
 /// </summary>
-public class StateBuilder<TInput, TState, TOutput>
+public class StateBuilder<TInput, TState, TOutput> where TInput : IWorkflowInput
 {
     private readonly WorkflowDefinition<TInput, TState, TOutput> _definition;
     private readonly StateDefinition<TInput, TState, TOutput> _stateDefinition;
@@ -31,7 +31,7 @@ public class StateBuilder<TInput, TState, TOutput>
 /// <summary>
 /// Builder for configuring a specific transition.
 /// </summary>
-public class TransitionBuilder<TInput, TState, TOutput, TMessage> where TMessage : TInput
+public class TransitionBuilder<TInput, TState, TOutput, TMessage> where TInput : IWorkflowInput where TMessage : TInput
 {
     private readonly WorkflowDefinition<TInput, TState, TOutput> _definition;
     private readonly StateDefinition<TInput, TState, TOutput> _stateDefinition;
@@ -115,7 +115,7 @@ public class TransitionBuilder<TInput, TState, TOutput, TMessage> where TMessage
 /// <summary>
 /// Builder for conditional transitions (after If()).
 /// </summary>
-public class ConditionalTransitionBuilder<TInput, TState, TOutput, TMessage> where TMessage : TInput
+public class ConditionalTransitionBuilder<TInput, TState, TOutput, TMessage> where TInput : IWorkflowInput where TMessage : TInput
 {
     private readonly WorkflowDefinition<TInput, TState, TOutput> _definition;
     private readonly StateDefinition<TInput, TState, TOutput> _stateDefinition;
@@ -167,7 +167,7 @@ public class ConditionalTransitionBuilder<TInput, TState, TOutput, TMessage> whe
 /// <summary>
 /// Builder for the else branch of a conditional transition.
 /// </summary>
-public class ElseBuilder<TInput, TState, TOutput, TMessage> where TMessage : TInput
+public class ElseBuilder<TInput, TState, TOutput, TMessage> where TInput : IWorkflowInput where TMessage : TInput
 {
     private readonly WorkflowDefinition<TInput, TState, TOutput> _definition;
     private readonly StateDefinition<TInput, TState, TOutput> _stateDefinition;
@@ -208,7 +208,7 @@ public class ElseBuilder<TInput, TState, TOutput, TMessage> where TMessage : TIn
 /// <summary>
 /// Builder for the else branch transition.
 /// </summary>
-public class ElseTransitionBuilder<TInput, TState, TOutput, TMessage> where TMessage : TInput
+public class ElseTransitionBuilder<TInput, TState, TOutput, TMessage> where TInput : IWorkflowInput where TMessage : TInput
 {
     private readonly WorkflowDefinition<TInput, TState, TOutput> _definition;
     private readonly StateDefinition<TInput, TState, TOutput> _stateDefinition;

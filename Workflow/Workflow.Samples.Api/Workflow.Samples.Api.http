@@ -1,0 +1,67 @@
+@Workflow.Samples.Api_HostAddress = http://localhost:5206
+
+### Get Order by ID
+GET {{Workflow.Samples.Api_HostAddress}}/orders/{{orderId}}
+Accept: application/json
+
+###
+@orderId = 3fa85f64-5717-4562-b3fc-2c963f66afa6
+
+### Create Order
+POST {{Workflow.Samples.Api_HostAddress}}/orders
+Content-Type: application/json
+
+{
+  "customerId": "customer-123",
+  "amount": 99.99,
+  "items": ["item-1", "item-2"]
+}
+
+###
+@newOrderId = {{POST.response.body.$.orderId}}
+
+### Get Created Order
+GET {{Workflow.Samples.Api_HostAddress}}/orders/{{newOrderId}}
+Accept: application/json
+
+###
+### Record Payment
+POST {{Workflow.Samples.Api_HostAddress}}/orders/{{newOrderId}}/payment
+Content-Type: application/json
+
+{
+  "amount": 99.99,
+  "paymentMethod": "credit_card",
+  "transactionId": "txn-12345"
+}
+
+###
+### Ship Order
+POST {{Workflow.Samples.Api_HostAddress}}/orders/{{newOrderId}}/ship
+Content-Type: application/json
+
+{
+  "trackingNumber": "1Z999AA10123456784",
+  "carrier": "UPS"
+}
+
+###
+### Deliver Order
+POST {{Workflow.Samples.Api_HostAddress}}/orders/{{newOrderId}}/deliver
+Content-Type: application/json
+
+###
+### Get Order Status
+GET {{Workflow.Samples.Api_HostAddress}}/orders/{{newOrderId}}/status
+Accept: application/json
+
+###
+### Cancel Order
+POST {{Workflow.Samples.Api_HostAddress}}/orders/{{newOrderId}}/cancel
+Content-Type: application/json
+
+{
+  "reason": "Customer requested cancellation"
+}
+
+###

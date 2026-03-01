@@ -3,24 +3,23 @@ namespace Workflow.InboxOutbox;
 /// <summary>
 /// Clean abstraction for sending workflow inputs.
 /// Hides the envelope creation from client code.
+/// WorkflowId is extracted from the input message via IWorkflowInput.
 /// </summary>
 public interface IWorkflowBus
 {
     /// <summary>
     /// Send an input message to a workflow instance.
     /// The workflow type is inferred from the input type registration.
+    /// The workflow ID is extracted from the input message.
     /// </summary>
-    /// <typeparam name="TInput">The workflow input base type</typeparam>
-    /// <param name="workflowId">Unique identifier for the workflow instance</param>
-    /// <param name="input">The input message</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    Task SendAsync<TInput>(string workflowId, TInput input, CancellationToken cancellationToken = default);
+    Task SendAsync<TInput>(TInput input, CancellationToken cancellationToken = default) where TInput : IWorkflowInput;
 
     /// <summary>
     /// Send an input message to a workflow instance with explicit workflow type.
     /// Use when input type is shared across multiple workflows.
+    /// The workflow ID is extracted from the input message.
     /// </summary>
-    Task SendAsync<TInput>(string workflowType, string workflowId, TInput input, CancellationToken cancellationToken = default);
+    Task SendAsync<TInput>(string workflowType, TInput input, CancellationToken cancellationToken = default) where TInput : IWorkflowInput;
 }
 
 /// <summary>

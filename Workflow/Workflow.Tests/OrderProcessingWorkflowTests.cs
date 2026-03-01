@@ -15,10 +15,10 @@ public class OrderProcessingWorkflowTests
         var orderId = "order-1";
 
         // First check Decide output
-        var commands = workflow.Decide(new PlaceOrderInputMessage(orderId), snapshot.State);
+        var commands = workflow.Decide(new PlaceOrderInputMessage { WorkflowId = orderId }, snapshot.State);
         commands.Count.Should().Be(3); // Send, Send, Schedule
 
-        var result = workflowOrchestrator.Run(workflow, snapshot, new PlaceOrderInputMessage(orderId), true);
+        var result = workflowOrchestrator.Run(workflow, snapshot, new PlaceOrderInputMessage { WorkflowId = orderId }, true);
 
         // Events: Began, InitiatedBy, Sent, Sent, Scheduled = 5
         result.Events.Count.Should().Be(5);
@@ -38,7 +38,7 @@ public class OrderProcessingWorkflowTests
         // Arrange
         var workflow = new OrderProcessingWorkflow();
         var state = new OrderCreated("order-123");
-        var input = new CheckOrderStateInputMessage("order-123");
+        var input = new CheckOrderStateInputMessage { WorkflowId = "order-123" };
 
         // Act
         var commands = workflow.Decide(input, state);
@@ -50,7 +50,7 @@ public class OrderProcessingWorkflowTests
         status.OrderId.Should().Be("order-123");
         status.Status.Should().Be("OrderCreated");
     }
-    
+
     [Fact]
     public void CheckOrderState_WhenOrderCreated_ShouldReplyWithStatusFull()
     {
@@ -61,8 +61,8 @@ public class OrderProcessingWorkflowTests
         var orderId = "order-123";
 
         // Act
-        var result = workflowOrchestrator.Run(workflow, snapshot, new CheckOrderStateInputMessage(orderId), true);
-        
+        var result = workflowOrchestrator.Run(workflow, snapshot, new CheckOrderStateInputMessage { WorkflowId = orderId }, true);
+
         // Assert
         result.Commands.Should().HaveCount(1);
         var reply = result.Commands[0].Should().BeOfType<Reply<OrderProcessingOutputMessage>>().Subject;
@@ -106,7 +106,7 @@ public class OrderProcessingAsyncWorkflowTests
         var orderId = "order-async-1";
 
         // Act
-        var result = await orchestrator.RunAsync(workflow, snapshot, new PlaceOrderInputMessage(orderId), context, begins: true);
+        var result = await orchestrator.RunAsync(workflow, snapshot, new PlaceOrderInputMessage { WorkflowId = orderId }, context, begins: true);
 
         // Assert
         result.Events.Count.Should().Be(5);  // Began, InitiatedBy, Sent x3
@@ -135,7 +135,7 @@ public class OrderProcessingAsyncWorkflowTests
         var context = new MockOrderContext();
 
         // Act
-        var result = await orchestrator.RunAsync(workflow, snapshot, new PaymentReceivedInputMessage("order-123"), context);
+        var result = await orchestrator.RunAsync(workflow, snapshot, new PaymentReceivedInputMessage { WorkflowId = "order-123" }, context);
 
         // Assert
         result.Snapshot.State.Should().BeOfType<PaymentConfirmed>();
@@ -158,7 +158,7 @@ public class OrderProcessingAsyncWorkflowTests
         var context = new MockOrderContext();
 
         // Act
-        var result = await orchestrator.RunAsync(workflow, snapshot, new OrderShippedInputMessage("order-123", "TRACK-123"), context);
+        var result = await orchestrator.RunAsync(workflow, snapshot, new OrderShippedInputMessage("TRACK-123") { WorkflowId = "order-123" }, context);
 
         // Assert
         result.Snapshot.State.Should().BeOfType<Shipped>();
@@ -184,7 +184,7 @@ public class OrderProcessingAsyncWorkflowTests
         var context = new MockOrderContext();
 
         // Act
-        var result = await orchestrator.RunAsync(workflow, snapshot, new OrderDeliveredInputMessage("order-123"), context);
+        var result = await orchestrator.RunAsync(workflow, snapshot, new OrderDeliveredInputMessage { WorkflowId = "order-123" }, context);
 
         // Assert
         result.Snapshot.State.Should().BeOfType<Delivered>();
@@ -206,7 +206,7 @@ public class OrderProcessingAsyncWorkflowTests
         var context = new MockOrderContext();
 
         // Act
-        var result = await orchestrator.RunAsync(workflow, snapshot, new OrderCancelledInputMessage("order-123", "Customer request"), context);
+        var result = await orchestrator.RunAsync(workflow, snapshot, new OrderCancelledInputMessage("Customer request") { WorkflowId = "order-123" }, context);
 
         // Assert
         result.Snapshot.State.Should().BeOfType<OrderCancelled>();
@@ -231,7 +231,7 @@ public class OrderProcessingAsyncWorkflowTests
         var context = new MockOrderContext();
 
         // Act
-        var result = await orchestrator.RunAsync(workflow, snapshot, new PaymentTimeoutInputMessage("order-123"), context);
+        var result = await orchestrator.RunAsync(workflow, snapshot, new PaymentTimeoutInputMessage { WorkflowId = "order-123" }, context);
 
         // Assert
         result.Snapshot.State.Should().BeOfType<OrderCancelled>();
@@ -257,7 +257,7 @@ public class OrderProcessingAsyncWorkflowTests
         var context = new MockOrderContext();
 
         // Act
-        var result = await orchestrator.RunAsync(workflow, snapshot, new CheckOrderStateInputMessage("order-123"), context);
+        var result = await orchestrator.RunAsync(workflow, snapshot, new CheckOrderStateInputMessage { WorkflowId = "order-123" }, context);
 
         // Assert
         result.Snapshot.State.Should().BeOfType<PaymentConfirmed>();  // State should not change
@@ -280,19 +280,19 @@ public class OrderProcessingAsyncWorkflowTests
 
         // Step 1: Place order
         var snapshot = orchestrator.CreateInitialSnapshot(workflow);
-        var result1 = await orchestrator.RunAsync(workflow, snapshot, new PlaceOrderInputMessage(orderId), context, begins: true);
+        var result1 = await orchestrator.RunAsync(workflow, snapshot, new PlaceOrderInputMessage { WorkflowId = orderId }, context, begins: true);
         result1.Snapshot.State.Should().BeOfType<OrderCreated>();
 
         // Step 2: Payment received
-        var result2 = await orchestrator.RunAsync(workflow, result1.Snapshot, new PaymentReceivedInputMessage(orderId), context);
+        var result2 = await orchestrator.RunAsync(workflow, result1.Snapshot, new PaymentReceivedInputMessage { WorkflowId = orderId }, context);
         result2.Snapshot.State.Should().BeOfType<PaymentConfirmed>();
 
         // Step 3: Order shipped
-        var result3 = await orchestrator.RunAsync(workflow, result2.Snapshot, new OrderShippedInputMessage(orderId, "TRACK-999"), context);
+        var result3 = await orchestrator.RunAsync(workflow, result2.Snapshot, new OrderShippedInputMessage("TRACK-999") { WorkflowId = orderId }, context);
         result3.Snapshot.State.Should().BeOfType<Shipped>();
 
         // Step 4: Order delivered
-        var result4 = await orchestrator.RunAsync(workflow, result3.Snapshot, new OrderDeliveredInputMessage(orderId), context);
+        var result4 = await orchestrator.RunAsync(workflow, result3.Snapshot, new OrderDeliveredInputMessage { WorkflowId = orderId }, context);
         result4.Snapshot.State.Should().BeOfType<Delivered>();
 
         // Verify completion command was issued
@@ -310,7 +310,7 @@ public class OrderProcessingAsyncWorkflowTests
 
         // Act - Step 1: Place order with insufficient local inventory
         var snapshot = orchestrator.CreateInitialSnapshot(workflow);
-        var result = await orchestrator.RunAsync(workflow, snapshot, new PlaceOrderInputMessage(orderId), context, begins: true);
+        var result = await orchestrator.RunAsync(workflow, snapshot, new PlaceOrderInputMessage { WorkflowId = orderId }, context, begins: true);
 
         // Assert - State transitions to OrderCreated (order initiated)
         result.Snapshot.State.Should().BeOfType<OrderCreated>();
@@ -321,7 +321,7 @@ public class OrderProcessingAsyncWorkflowTests
         sendCommand.Message.Should().BeOfType<NotifyInsufficientInventory>();
 
         // Act - Step 2: External system sends InsufficientInventoryInputMessage to trigger warehouse request
-        var result2 = await orchestrator.RunAsync(workflow, result.Snapshot, new InsufficientInventoryInputMessage(orderId), context);
+        var result2 = await orchestrator.RunAsync(workflow, result.Snapshot, new InsufficientInventoryInputMessage { WorkflowId = orderId }, context);
 
         // Assert - State transitions to AwaitingWarehouseInventory
         result2.Snapshot.State.Should().BeOfType<AwaitingWarehouseInventory>();
@@ -350,7 +350,7 @@ public class OrderProcessingAsyncWorkflowTests
         );
 
         // Act - Warehouse inventory received
-        var result = await orchestrator.RunAsync(workflow, snapshot, new WarehouseInventoryReceivedInputMessage(orderId), context);
+        var result = await orchestrator.RunAsync(workflow, snapshot, new WarehouseInventoryReceivedInputMessage { WorkflowId = orderId }, context);
 
         // Assert - State transitions to PaymentConfirmed
         result.Snapshot.State.Should().BeOfType<PaymentConfirmed>();
@@ -380,7 +380,7 @@ public class OrderProcessingAsyncWorkflowTests
         );
 
         // Act - Warehouse inventory unavailable
-        var result = await orchestrator.RunAsync(workflow, snapshot, new WarehouseInventoryUnavailableInputMessage(orderId), context);
+        var result = await orchestrator.RunAsync(workflow, snapshot, new WarehouseInventoryUnavailableInputMessage { WorkflowId = orderId }, context);
 
         // Assert - State transitions to Cancelled
         result.Snapshot.State.Should().BeOfType<OrderCancelled>();

@@ -1,0 +1,13 @@
+services:
+  md-to-pdf:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      # Mount input directory (where your .md files are)
+      - ../md:/input:ro
+      # Mount output directory (where PDFs will be created)
+      - ../md:/output
+    environment:
+      - INPUT_DIR=/input
+      - OUTPUT_DIR=/output

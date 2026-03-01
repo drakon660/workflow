@@ -40,7 +40,7 @@ public class WorkflowProcessorTests
         var processor = CreateProcessor(repository, deliveredMessages);
 
         // Act
-        await processor.ProcessAsync(TestWorkflowId, new PlaceOrderInputMessage(TestWorkflowId));
+        await processor.ProcessAsync(new PlaceOrderInputMessage { WorkflowId = TestWorkflowId });
 
         // Assert - get the stream and verify contents
         var stream = await repository.GetOrCreate(TestWorkflowId, CancellationToken.None);
@@ -72,7 +72,7 @@ public class WorkflowProcessorTests
         var processor = CreateProcessor(repository, deliveredMessages);
 
         // Act
-        await processor.ProcessAsync(TestWorkflowId, new PlaceOrderInputMessage(TestWorkflowId));
+        await processor.ProcessAsync(new PlaceOrderInputMessage { WorkflowId = TestWorkflowId });
 
         // Assert - first event should be Began
         var stream = await repository.GetOrCreate(TestWorkflowId, CancellationToken.None);
@@ -94,11 +94,11 @@ public class WorkflowProcessorTests
         var processor = CreateProcessor(repository, deliveredMessages);
 
         // First message starts the workflow
-        await processor.ProcessAsync(TestWorkflowId, new PlaceOrderInputMessage(TestWorkflowId));
+        await processor.ProcessAsync(new PlaceOrderInputMessage { WorkflowId = TestWorkflowId });
         deliveredMessages.Clear();
 
         // Act - second message continues
-        await processor.ProcessAsync(TestWorkflowId, new PaymentReceivedInputMessage(TestWorkflowId));
+        await processor.ProcessAsync(new PaymentReceivedInputMessage { WorkflowId = TestWorkflowId });
 
         // Assert - should have Received event, not Began/InitiatedBy
         var stream = await repository.GetOrCreate(TestWorkflowId, CancellationToken.None);
@@ -121,14 +121,14 @@ public class WorkflowProcessorTests
         var processor = CreateProcessor(repository, deliveredMessages);
 
         // Process PlaceOrder -> state becomes OrderCreated
-        await processor.ProcessAsync(TestWorkflowId, new PlaceOrderInputMessage(TestWorkflowId));
+        await processor.ProcessAsync(new PlaceOrderInputMessage { WorkflowId = TestWorkflowId });
 
         // Process PaymentReceived -> state should become PaymentConfirmed
-        await processor.ProcessAsync(TestWorkflowId, new PaymentReceivedInputMessage(TestWorkflowId));
+        await processor.ProcessAsync(new PaymentReceivedInputMessage { WorkflowId = TestWorkflowId });
 
         // Act - check the state by sending CheckOrderState
         deliveredMessages.Clear();
-        await processor.ProcessAsync(TestWorkflowId, new CheckOrderStateInputMessage(TestWorkflowId));
+        await processor.ProcessAsync(new CheckOrderStateInputMessage { WorkflowId = TestWorkflowId });
 
         // Assert - should get a Reply with PaymentConfirmed status
         deliveredMessages.Should().HaveCount(1);
@@ -149,14 +149,14 @@ public class WorkflowProcessorTests
         var processor = CreateProcessor(repository, deliveredMessages);
 
         // Act - full order lifecycle
-        await processor.ProcessAsync(TestWorkflowId, new PlaceOrderInputMessage(TestWorkflowId));
-        await processor.ProcessAsync(TestWorkflowId, new PaymentReceivedInputMessage(TestWorkflowId));
-        await processor.ProcessAsync(TestWorkflowId, new OrderShippedInputMessage(TestWorkflowId, "TRACK-456"));
-        await processor.ProcessAsync(TestWorkflowId, new OrderDeliveredInputMessage(TestWorkflowId));
+        await processor.ProcessAsync(new PlaceOrderInputMessage { WorkflowId = TestWorkflowId });
+        await processor.ProcessAsync(new PaymentReceivedInputMessage { WorkflowId = TestWorkflowId });
+        await processor.ProcessAsync(new OrderShippedInputMessage("TRACK-456") { WorkflowId = TestWorkflowId });
+        await processor.ProcessAsync(new OrderDeliveredInputMessage { WorkflowId = TestWorkflowId });
 
         // Assert - verify final state
         deliveredMessages.Clear();
-        await processor.ProcessAsync(TestWorkflowId, new CheckOrderStateInputMessage(TestWorkflowId));
+        await processor.ProcessAsync(new CheckOrderStateInputMessage { WorkflowId = TestWorkflowId });
 
         var replyMessage = deliveredMessages[0].DeserializedBody as Reply<OrderProcessingOutputMessage>;
         var status = replyMessage!.Message as OrderProcessingStatus;
@@ -172,7 +172,7 @@ public class WorkflowProcessorTests
         var processor = CreateProcessor(repository, deliveredMessages);
 
         // Start the order
-        await processor.ProcessAsync(TestWorkflowId, new PlaceOrderInputMessage(TestWorkflowId));
+        await processor.ProcessAsync(new PlaceOrderInputMessage { WorkflowId = TestWorkflowId });
 
         // PlaceOrder delivers: Send(ProcessPayment), Send(NotifyOrderPlaced)
         // Schedule(PaymentTimeout) is not delivered (future)
@@ -180,7 +180,7 @@ public class WorkflowProcessorTests
         deliveredMessages.Clear();
 
         // Act - cancel the order
-        await processor.ProcessAsync(TestWorkflowId, new OrderCancelledInputMessage(TestWorkflowId, "Customer request"));
+        await processor.ProcessAsync(new OrderCancelledInputMessage("Customer request") { WorkflowId = TestWorkflowId });
 
         // Assert - OrderCancelled delivers: Send(NotifyOrderCancelled), Complete
         deliveredMessages.Should().HaveCount(2);
@@ -198,10 +198,10 @@ public class WorkflowProcessorTests
         // OrderCancelled: 1 input + 3 events (Received, Sent, Completed) + 2 commands = 6
         // Total: 15
         allMessages.Should().HaveCount(15);
-        
+
         var commands = allMessages.Where(x=>x.Kind == MessageKind.Command);
         var events2 = allMessages.Where(x=>x.Kind == MessageKind.Event);
-        
+
         var events = stream.GetEvents();
         // PlaceOrder: Began, InitiatedBy, Sent, Sent, Scheduled = 5
         // OrderCancelled: Received, Sent, Completed = 3
@@ -221,23 +221,23 @@ public class WorkflowProcessorTests
         const string orderId2 = "order-2";
 
         // Act - start two workflows
-        await processor.ProcessAsync(orderId1, new PlaceOrderInputMessage(orderId1));
-        await processor.ProcessAsync(orderId2, new PlaceOrderInputMessage(orderId2));
+        await processor.ProcessAsync(new PlaceOrderInputMessage { WorkflowId = orderId1 });
+        await processor.ProcessAsync(new PlaceOrderInputMessage { WorkflowId = orderId2 });
 
         // Advance order 1 to PaymentConfirmed
-        await processor.ProcessAsync(orderId1, new PaymentReceivedInputMessage(orderId1));
+        await processor.ProcessAsync(new PaymentReceivedInputMessage { WorkflowId = orderId1 });
 
         // Assert - check states are independent
         deliveredMessages.Clear();
 
-        await processor.ProcessAsync(orderId1, new CheckOrderStateInputMessage(orderId1));
+        await processor.ProcessAsync(new CheckOrderStateInputMessage { WorkflowId = orderId1 });
         var reply1 = (deliveredMessages[0].DeserializedBody as Reply<OrderProcessingOutputMessage>)!;
         var status1 = (reply1.Message as OrderProcessingStatus)!;
         status1.Status.Should().Be("PaymentConfirmed");
 
         deliveredMessages.Clear();
 
-        await processor.ProcessAsync(orderId2, new CheckOrderStateInputMessage(orderId2));
+        await processor.ProcessAsync(new CheckOrderStateInputMessage { WorkflowId = orderId2 });
         var reply2 = (deliveredMessages[0].DeserializedBody as Reply<OrderProcessingOutputMessage>)!;
         var status2 = (reply2.Message as OrderProcessingStatus)!;
         status2.Status.Should().Be("OrderCreated"); // Still at initial state
@@ -252,7 +252,7 @@ public class WorkflowProcessorTests
         var processor = CreateProcessor(repository, deliveredMessages);
 
         // Act
-        await processor.ProcessAsync(TestWorkflowId, new PlaceOrderInputMessage(TestWorkflowId));
+        await processor.ProcessAsync(new PlaceOrderInputMessage { WorkflowId = TestWorkflowId });
 
         // Assert - scheduled messages should not be in delivered (ScheduledTime is in future)
         var scheduledDelivered = deliveredMessages
@@ -288,7 +288,7 @@ public class WorkflowProcessorTests
         var processor = CreateProcessor(repository, deliveredMessages);
 
         // Act
-        await processor.ProcessAsync(TestWorkflowId, new PlaceOrderInputMessage(TestWorkflowId));
+        await processor.ProcessAsync(new PlaceOrderInputMessage { WorkflowId = TestWorkflowId });
 
         // Assert - check the serialized events have proper inner message types
         var stream = await repository.GetOrCreate(TestWorkflowId, CancellationToken.None);
@@ -297,7 +297,7 @@ public class WorkflowProcessorTests
         // Find the Sent event for ProcessPayment
         var sentEvent = events.First(e => e.MessageType == "Sent" && e.Body.Contains("ProcessPayment") == false);
 
-        // The Body should now contain the actual OrderId, not just {}
+        // The Body should now contain the actual WorkflowId, not just {}
         sentEvent.Body.Should().Contain("order-123");
 
         // InnerMessageType should be set
@@ -319,7 +319,7 @@ public class WorkflowProcessorTests
         var processor = CreateProcessor(repository, deliveredMessages);
 
         // Process first message
-        await processor.ProcessAsync(TestWorkflowId, new PlaceOrderInputMessage(TestWorkflowId));
+        await processor.ProcessAsync(new PlaceOrderInputMessage { WorkflowId = TestWorkflowId });
 
         // Clear DeserializedBody to force deserialization from Body
         var stream = await repository.GetOrCreate(TestWorkflowId, CancellationToken.None);
@@ -329,11 +329,11 @@ public class WorkflowProcessorTests
         }
 
         // Act - process another message (will rebuild state from stored events)
-        await processor.ProcessAsync(TestWorkflowId, new PaymentReceivedInputMessage(TestWorkflowId));
+        await processor.ProcessAsync(new PaymentReceivedInputMessage { WorkflowId = TestWorkflowId });
 
         // Assert - verify state was rebuilt correctly by checking the final state
         deliveredMessages.Clear();
-        await processor.ProcessAsync(TestWorkflowId, new CheckOrderStateInputMessage(TestWorkflowId));
+        await processor.ProcessAsync(new CheckOrderStateInputMessage { WorkflowId = TestWorkflowId });
 
         var reply = deliveredMessages[0].DeserializedBody as Reply<OrderProcessingOutputMessage>;
         var status = reply!.Message as OrderProcessingStatus;

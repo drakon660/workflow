@@ -1,4 +1,4 @@
-﻿// Type aliases for cleaner pattern matching
+// Type aliases for cleaner pattern matching
 using InitiatedBy = Workflow.InitiatedBy<Workflow.Samples.Order.OrderProcessingInputMessage, Workflow.Samples.Order.OrderProcessingOutputMessage>;
 using Received = Workflow.Received<Workflow.Samples.Order.OrderProcessingInputMessage, Workflow.Samples.Order.OrderProcessingOutputMessage>;
 
@@ -12,22 +12,22 @@ public sealed class OrderProcessingWorkflow : Workflow<OrderProcessingInputMessa
     {
         return (state, workflowEvent) switch
         {
-            { state: NoOrder s, workflowEvent: InitiatedBy { Message: PlaceOrderInputMessage m } } => new OrderCreated(m.OrderId),
+            { state: NoOrder s, workflowEvent: InitiatedBy { Message: PlaceOrderInputMessage m } } => new OrderCreated(m.WorkflowId),
 
-            { state: OrderCreated s, workflowEvent: Received { Message: PaymentReceivedInputMessage m } } => new PaymentConfirmed(m.OrderId),
+            { state: OrderCreated s, workflowEvent: Received { Message: PaymentReceivedInputMessage m } } => new PaymentConfirmed(m.WorkflowId),
 
-            { state: PaymentConfirmed s, workflowEvent: Received { Message: OrderShippedInputMessage m } } => new Shipped(m.OrderId,  m.TrackingNumber),
+            { state: PaymentConfirmed s, workflowEvent: Received { Message: OrderShippedInputMessage m } } => new Shipped(m.WorkflowId, m.TrackingNumber),
 
-            { state: Shipped s, workflowEvent: Received { Message: OrderDeliveredInputMessage m } } => new Delivered(m.OrderId, s.TrackingNumber),
+            { state: Shipped s, workflowEvent: Received { Message: OrderDeliveredInputMessage m } } => new Delivered(m.WorkflowId, s.TrackingNumber),
 
-            { state: OrderCreated s, workflowEvent: Received { Message: OrderCancelledInputMessage m } } => new OrderCancelled(m.OrderId, m.Reason),
+            { state: OrderCreated s, workflowEvent: Received { Message: OrderCancelledInputMessage m } } => new OrderCancelled(m.WorkflowId, m.Reason),
 
-            { state: OrderCreated s, workflowEvent: Received { Message: PaymentTimeoutInputMessage m } } => new OrderCancelled(m.OrderId, "Payment_Timeout"),
+            { state: OrderCreated s, workflowEvent: Received { Message: PaymentTimeoutInputMessage m } } => new OrderCancelled(m.WorkflowId, "Payment_Timeout"),
 
             _ => state
         };
     }
-    
+
     public override IReadOnlyList<WorkflowCommand<OrderProcessingOutputMessage>> Decide(
         OrderProcessingInputMessage input, OrderProcessingState state)
     {
@@ -35,19 +35,19 @@ public sealed class OrderProcessingWorkflow : Workflow<OrderProcessingInputMessa
         {
             (PlaceOrderInputMessage p, NoOrder s) =>
             [
-                Send(new ProcessPayment(p.OrderId)),
-                Send(new NotifyOrderPlaced(p.OrderId)),
-                Schedule(TimeSpan.FromMinutes(15), new PaymentTimeoutOutMessage(p.OrderId))
+                Send(new ProcessPayment(p.WorkflowId)),
+                Send(new NotifyOrderPlaced(p.WorkflowId)),
+                Schedule(TimeSpan.FromMinutes(15), new PaymentTimeoutOutMessage(p.WorkflowId))
             ],
-            
+
             (PaymentReceivedInputMessage p, OrderCreated s) =>
             [
-                Send(new ShipOrder(p.OrderId))
+                Send(new ShipOrder(p.WorkflowId))
             ],
 
             (OrderShippedInputMessage p, PaymentConfirmed s) =>
             [
-                Send(new NotifyOrderShipped(p.OrderId, p.TrackingNumber))
+                Send(new NotifyOrderShipped(p.WorkflowId, p.TrackingNumber))
             ],
 
             (OrderDeliveredInputMessage p, Shipped s) =>
@@ -67,10 +67,10 @@ public sealed class OrderProcessingWorkflow : Workflow<OrderProcessingInputMessa
                 Send(new NotifyOrderCancelled(s.OrderId, "Payment_Timeout")),
                 Complete()
             ],
-            
+
             (CheckOrderStateInputMessage p, OrderProcessingState s) => [
                 Reply(new OrderProcessingStatus(
-                    p.OrderId,
+                    p.WorkflowId,
                     s switch
                     {
                         NoOrder => "NotExisting",

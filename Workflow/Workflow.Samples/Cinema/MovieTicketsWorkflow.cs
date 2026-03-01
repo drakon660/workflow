@@ -1,6 +1,6 @@
-﻿namespace Workflow.Samples.Cinema;
+namespace Workflow.Samples.Cinema;
 
-using InitiatedBy = Workflow.InitiatedBy<Workflow.Samples.Cinema.MovieTicketInputMessage, Workflow.Samples.Cinema.MovieTicketOutputMessage>; 
+using InitiatedBy = Workflow.InitiatedBy<Workflow.Samples.Cinema.MovieTicketInputMessage, Workflow.Samples.Cinema.MovieTicketOutputMessage>;
 using Received = Workflow.Received<Workflow.Samples.Cinema.MovieTicketInputMessage, Workflow.Samples.Cinema.MovieTicketOutputMessage>;
 
 public class MovieTicketsWorkflow : Workflow<MovieTicketInputMessage, MovieTicketState, MovieTicketOutputMessage>
@@ -15,26 +15,26 @@ public class MovieTicketsWorkflow : Workflow<MovieTicketInputMessage, MovieTicke
             { state: NoTicketState, workflowEvent: InitiatedBy { Message: PlaceMovieTicketPurchase m } } => new
                 TicketRequestCreated
                 {
-                    TicketId = m.TicketId,
+                    TicketId = m.WorkflowId,
                     Name = m.Name,
                     FamilyName = m.FamilyName,
-                    MovieTitle = m.MovieTitle, 
+                    MovieTitle = m.MovieTitle,
                     RowNumber = m.RowNumber,
                     RoomName = m.RoomName,
                     SeatNumber = m.SeatNumber,
                 },
 
             { state: TicketRequestCreated s, workflowEvent: Received { Message: SeatsLocked m } } => new
-                SeatsReserved(m.TicketId),
+                SeatsReserved(m.WorkflowId),
 
             { state: TicketRequestCreated s, workflowEvent: Received { Message: SeatLockRejected m } } => new
-                SeatUnavailable(m.TicketId, m.Reason),
+                SeatUnavailable(m.WorkflowId, m.Reason),
 
             { state: SeatsReserved s, workflowEvent: Received { Message: MovieTicketPaymentReceived m } } => new
-                PaymentConfirmed(m.TicketId),
+                PaymentConfirmed(m.WorkflowId),
 
             { state: PaymentConfirmed s, workflowEvent: Received { Message: MovieTicketsPayed m } } => new
-                TicketPurchasedConfirmed(m.TicketId),
+                TicketPurchasedConfirmed(m.WorkflowId),
 
             _ => state
         };
@@ -46,16 +46,16 @@ public class MovieTicketsWorkflow : Workflow<MovieTicketInputMessage, MovieTicke
         return (input, state) switch
         {
             { input: PlaceMovieTicketPurchase m, state: NoTicketState } =>
-                [Send(new LockSeats(m.TicketId))], // first lock seats, don't process payment yet
+                [Send(new LockSeats(m.WorkflowId))], // first lock seats, don't process payment yet
 
             { input: SeatsLocked m, state: TicketRequestCreated } =>
-                [Send(new MovieTicketProcessPayment(m.TicketId))], // seats locked, now process payment
+                [Send(new MovieTicketProcessPayment(m.WorkflowId))], // seats locked, now process payment
 
             { input: SeatLockRejected m, state: TicketRequestCreated } =>
-                [Send(new NotifySeatUnavailable(m.TicketId, m.Reason)), Complete()], // notify user and end workflow
+                [Send(new NotifySeatUnavailable(m.WorkflowId, m.Reason)), Complete()], // notify user and end workflow
 
             { input: MovieTicketPaymentReceived m, state: SeatsReserved } =>
-                [Send(new ConfirmMovieTicketPurchased(m.TicketId))],
+                [Send(new ConfirmMovieTicketPurchased(m.WorkflowId))],
 
             { input: MovieTicketsPayed, state: PaymentConfirmed } =>
                 [Complete()],

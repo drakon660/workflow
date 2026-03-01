@@ -27,7 +27,7 @@ public class WorkflowOrchestratorTests
     {
         // Arrange
         var initialSnapshot = _orchestrator.CreateInitialSnapshot(_workflow);
-        var message = new InitiateGroupCheckout("group-123", [new Guest("guest-1"), new Guest("guest-2")]);
+        var message = new InitiateGroupCheckout([new Guest("guest-1"), new Guest("guest-2")]) { WorkflowId = "group-123" };
 
         // Act - Process the initiating message
         var result = _orchestrator.Run(_workflow, initialSnapshot, message, begins: true);
@@ -63,11 +63,11 @@ public class WorkflowOrchestratorTests
             {
                 new Began<GroupCheckoutInputMessage, GroupCheckoutOutputMessage>(),
                 new InitiatedBy<GroupCheckoutInputMessage, GroupCheckoutOutputMessage>(
-                    new InitiateGroupCheckout("group-123", [new Guest("guest-1"), new Guest("guest-2")]))
+                    new InitiateGroupCheckout([new Guest("guest-1"), new Guest("guest-2")]) { WorkflowId = "group-123" })
             }
         );
 
-        var message = new GuestCheckedOut("guest-1");
+        var message = new GuestCheckedOut("guest-1") { WorkflowId = "group-123" };
 
         // Act - Process the incoming message
         var result = _orchestrator.Run(_workflow, snapshot, message, begins: false);
@@ -98,7 +98,7 @@ public class WorkflowOrchestratorTests
         var snapshot = _orchestrator.CreateInitialSnapshot(_workflow);
 
         // Step 2: Process initiating message
-        var initiateMessage = new InitiateGroupCheckout("group-123", [new Guest("guest-1"), new Guest("guest-2")]);
+        var initiateMessage = new InitiateGroupCheckout([new Guest("guest-1"), new Guest("guest-2")]) { WorkflowId = "group-123" };
         var result1 = _orchestrator.Run(_workflow, snapshot, initiateMessage, begins: true);
 
         // At this point, you would:
@@ -108,7 +108,7 @@ public class WorkflowOrchestratorTests
         result1.Snapshot.EventHistory.Should().HaveCount(4);
 
         // Step 3: Process first guest checkout
-        var guest1CheckedOut = new GuestCheckedOut("guest-1");
+        var guest1CheckedOut = new GuestCheckedOut("guest-1") { WorkflowId = "group-123" };
         var result2 = _orchestrator.Run(_workflow, result1.Snapshot, guest1CheckedOut, begins: false);
 
         // No commands yet (still waiting for guest-2)
@@ -116,7 +116,7 @@ public class WorkflowOrchestratorTests
         result2.Snapshot.EventHistory.Should().HaveCount(5); // Previous 4 + new 1
 
         // Step 4: Process second guest checkout - workflow completes
-        var guest2CheckedOut = new GuestCheckedOut("guest-2");
+        var guest2CheckedOut = new GuestCheckedOut("guest-2") { WorkflowId = "group-123" };
         var result3 = _orchestrator.Run(_workflow, result2.Snapshot, guest2CheckedOut, begins: false);
 
         // Commands generated for completion
@@ -149,7 +149,7 @@ public class WorkflowOrchestratorTests
             EventHistory: new List<WorkflowEvent<GroupCheckoutInputMessage, GroupCheckoutOutputMessage>>()
         );
 
-        var timeoutMessage = new TimeoutGroupCheckout("group-123");
+        var timeoutMessage = new TimeoutGroupCheckout() { WorkflowId = "group-123" };
 
         // Act
         var result = _orchestrator.Run(_workflow, snapshot, timeoutMessage, begins: false);

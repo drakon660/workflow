@@ -99,7 +99,7 @@ public class OrderModule : ICarterModule
         var orderIdStr = orderId.ToString();
 
         // Clean API - no envelope creation needed
-        await workflowBus.SendAsync(orderIdStr, new PlaceOrderInputMessage(orderIdStr), cancellationToken);
+        await workflowBus.SendAsync(new PlaceOrderInputMessage { WorkflowId = orderIdStr }, cancellationToken);
 
         return Results.Created($"/orders/{orderId}", new OrderCreatedResponse
         {
@@ -117,7 +117,7 @@ public class OrderModule : ICarterModule
     {
         var orderIdStr = id.ToString();
 
-        await workflowBus.SendAsync(orderIdStr, new PaymentReceivedInputMessage(orderIdStr), cancellationToken);
+        await workflowBus.SendAsync(new PaymentReceivedInputMessage { WorkflowId = orderIdStr }, cancellationToken);
 
         return Results.Ok(new { Message = "Payment recorded successfully" });
     }
@@ -130,7 +130,7 @@ public class OrderModule : ICarterModule
     {
         var orderIdStr = id.ToString();
 
-        await workflowBus.SendAsync(orderIdStr, new OrderShippedInputMessage(orderIdStr, request.TrackingNumber), cancellationToken);
+        await workflowBus.SendAsync(new OrderShippedInputMessage(request.TrackingNumber) { WorkflowId = orderIdStr }, cancellationToken);
 
         return Results.Ok(new { Message = "Order shipped successfully" });
     }
@@ -142,7 +142,7 @@ public class OrderModule : ICarterModule
     {
         var orderIdStr = id.ToString();
 
-        await workflowBus.SendAsync(orderIdStr, new OrderDeliveredInputMessage(orderIdStr), cancellationToken);
+        await workflowBus.SendAsync(new OrderDeliveredInputMessage { WorkflowId = orderIdStr }, cancellationToken);
 
         return Results.Ok(new { Message = "Order marked as delivered successfully" });
     }
@@ -155,7 +155,7 @@ public class OrderModule : ICarterModule
     {
         var orderIdStr = id.ToString();
 
-        await workflowBus.SendAsync(orderIdStr, new OrderCancelledInputMessage(orderIdStr, request.Reason), cancellationToken);
+        await workflowBus.SendAsync(new OrderCancelledInputMessage(request.Reason) { WorkflowId = orderIdStr }, cancellationToken);
 
         return Results.Ok(new { Message = "Order cancelled successfully" });
     }
@@ -167,7 +167,7 @@ public class OrderModule : ICarterModule
     {
         var orderIdStr = id.ToString();
 
-        await workflowBus.SendAsync(orderIdStr, new CheckOrderStateInputMessage(orderIdStr), cancellationToken);
+        await workflowBus.SendAsync(new CheckOrderStateInputMessage { WorkflowId = orderIdStr }, cancellationToken);
 
         // For now, return immediate response
         return Results.Ok(new OrderStatusResponse

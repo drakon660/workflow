@@ -7,7 +7,7 @@ namespace Workflow.InboxOutbox;
 /// Processes workflow inputs through the decide/evolve pattern with inbox/outbox storage.
 /// Uses WorkflowOrchestrator for state management and event translation.
 /// </summary>
-public class WorkflowProcessor<TInput, TState, TOutput>
+public class WorkflowProcessor<TInput, TState, TOutput> where TInput : IWorkflowInput
 {
     // JsonSerializer options - NOTE: polymorphic properties (TInput/TOutput) require
     // [JsonPolymorphic] attributes on base types for full serialization.
@@ -39,10 +39,11 @@ public class WorkflowProcessor<TInput, TState, TOutput>
 
     /// <summary>
     /// Process an input message through the workflow.
-    /// Routing/correlation is handled by the caller.
+    /// WorkflowId is extracted from the input message via IWorkflowInput.
     /// </summary>
-    public async Task ProcessAsync(string workflowId, TInput input, CancellationToken ct = default)
+    public async Task ProcessAsync(TInput input, CancellationToken ct = default)
     {
+        var workflowId = input.WorkflowId;
         var stream = await _repository.Lock(workflowId, ct).ConfigureAwait(false);
         try
         {

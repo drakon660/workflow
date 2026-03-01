@@ -25,7 +25,7 @@ namespace Workflow.Fluent;
 /// }
 /// </code>
 /// </summary>
-public abstract class FluentWorkflow<TInput, TState, TOutput>
+public abstract class FluentWorkflow<TInput, TState, TOutput> where TInput : IWorkflowInput
 {
     /// <summary>
     /// The workflow definition containing all states and transitions.

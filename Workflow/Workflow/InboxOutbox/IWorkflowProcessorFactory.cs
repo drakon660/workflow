@@ -10,12 +10,12 @@ public interface IWorkflowProcessorFactory
 {
     /// <summary>
     /// Process a workflow input using the appropriate processor.
+    /// WorkflowId is extracted from the input message via IWorkflowInput.
     /// </summary>
     /// <param name="workflowType">Type key (e.g., "OrderProcessing")</param>
-    /// <param name="workflowId">Workflow instance ID</param>
-    /// <param name="input">The input message</param>
+    /// <param name="input">The input message (must implement IWorkflowInput)</param>
     /// <param name="cancellationToken">Cancellation token</param>
-    Task ProcessAsync(string workflowType, string workflowId, object input, CancellationToken cancellationToken = default);
+    Task ProcessAsync(string workflowType, object input, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Check if a processor is registered for the given workflow type.
@@ -29,31 +29,24 @@ public interface IWorkflowProcessorFactory
 public interface IWorkflowProcessorRegistration
 {
     string WorkflowType { get; }
-    Type InputType { get; }
-    Type StateType { get; }
-    Type OutputType { get; }
-    Task ProcessAsync(IServiceProvider serviceProvider, string workflowId, object input, CancellationToken cancellationToken);
+    Task ProcessAsync(IServiceProvider serviceProvider, object input, CancellationToken cancellationToken);
 }
 
 /// <summary>
 /// Typed registration for a specific workflow.
 /// </summary>
-public class WorkflowProcessorRegistration<TInput, TState, TOutput> : IWorkflowProcessorRegistration
+public class WorkflowProcessorRegistration<TInput, TState, TOutput> : IWorkflowProcessorRegistration where TInput : IWorkflowInput
 {
     public string WorkflowType { get; }
-    public Type InputType => typeof(TInput);
-    public Type StateType => typeof(TState);
-    public Type OutputType => typeof(TOutput);
-
     public WorkflowProcessorRegistration(string workflowType)
     {
         WorkflowType = workflowType;
     }
 
-    public async Task ProcessAsync(IServiceProvider serviceProvider, string workflowId, object input, CancellationToken cancellationToken)
+    public async Task ProcessAsync(IServiceProvider serviceProvider, object input, CancellationToken cancellationToken)
     {
         var processor = serviceProvider.GetRequiredService<WorkflowProcessor<TInput, TState, TOutput>>();
-        await processor.ProcessAsync(workflowId, (TInput)input, cancellationToken);
+        await processor.ProcessAsync((TInput)input, cancellationToken);
     }
 }
 
@@ -76,7 +69,7 @@ public class WorkflowProcessorFactory : IWorkflowProcessorFactory
 
     public bool HasProcessor(string workflowType) => _registrations.ContainsKey(workflowType);
 
-    public async Task ProcessAsync(string workflowType, string workflowId, object input, CancellationToken cancellationToken = default)
+    public async Task ProcessAsync(string workflowType, object input, CancellationToken cancellationToken = default)
     {
         if (!_registrations.TryGetValue(workflowType, out var registration))
         {
@@ -86,6 +79,6 @@ public class WorkflowProcessorFactory : IWorkflowProcessorFactory
 
         // Create a scope for the processing
         using var scope = _serviceProvider.CreateScope();
-        await registration.ProcessAsync(scope.ServiceProvider, workflowId, input, cancellationToken);
+        await registration.ProcessAsync(scope.ServiceProvider, input, cancellationToken);
     }
 }

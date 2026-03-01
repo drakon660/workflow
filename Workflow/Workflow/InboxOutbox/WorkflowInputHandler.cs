@@ -37,7 +37,6 @@ public class WorkflowInputHandler
         {
             await _processorFactory.ProcessAsync(
                 envelope.WorkflowType,
-                envelope.WorkflowId,
                 envelope.Input,
                 cancellationToken);
 

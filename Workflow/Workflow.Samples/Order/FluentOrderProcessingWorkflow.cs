@@ -10,7 +10,7 @@ public class FluentOrderProcessingWorkflow : FluentWorkflow<OrderProcessingInput
         Initially<NoOrder>()
             .On<PlaceOrderInputMessage>()
             .Execute(ctx=> 
-                Send(new ProcessPayment(ctx.Message.OrderId)))
+                Send(new ProcessPayment(ctx.Message.WorkflowId)))
             .TransitionTo<OrderCreated>();
     }
 }

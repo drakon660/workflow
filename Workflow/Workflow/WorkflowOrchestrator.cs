@@ -3,15 +3,15 @@
 public record WorkflowSnapshot<TInput, TState, TOutput>(
     TState State,
     IReadOnlyList<WorkflowEvent<TInput, TOutput>> EventHistory
-);
+) where TInput : IWorkflowInput;
 
 public record OrchestrationResult<TInput, TState, TOutput>(
     WorkflowSnapshot<TInput, TState, TOutput> Snapshot,
     IReadOnlyList<WorkflowCommand<TOutput>> Commands,
     IReadOnlyList<WorkflowEvent<TInput, TOutput>> Events
-);
+) where TInput : IWorkflowInput;
 
-public class WorkflowOrchestrator<TInput, TState, TOutput>
+public class WorkflowOrchestrator<TInput, TState, TOutput> where TInput : IWorkflowInput
 {
     public OrchestrationResult<TInput, TState, TOutput> Run(IWorkflow<TInput, TState, TOutput> workflow,
         WorkflowSnapshot<TInput, TState, TOutput> snapshot,
@@ -59,7 +59,7 @@ public class WorkflowOrchestrator<TInput, TState, TOutput>
     }
 }
 
-public class AsyncWorkflowOrchestrator<TInput, TState, TOutput, TContext>
+public class AsyncWorkflowOrchestrator<TInput, TState, TOutput, TContext> where TInput : IWorkflowInput
 {
     public async Task<OrchestrationResult<TInput, TState, TOutput>> RunAsync(IAsyncWorkflow<TInput, TState, TOutput, TContext> workflow,
         WorkflowSnapshot<TInput, TState, TOutput> snapshot,

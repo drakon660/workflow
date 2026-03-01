@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker compose build:*)",
+      "Bash(docker compose run:*)",
+      "Bash(dir:*)",
+      "Bash(pwsh -File convert-md-to-pdf.ps1:*)",
+      "Bash(./pandoc/pandoc.exe:*)"
+    ]
+  }
+}

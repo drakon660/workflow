@@ -5,6 +5,7 @@ namespace Workflow.InboxOutbox;
 /// <summary>
 /// Wolverine implementation of IWorkflowBus.
 /// Wraps IMessageBus and creates WorkflowInputEnvelope internally.
+/// WorkflowId is extracted from the input message via IWorkflowInput.
 /// </summary>
 public class WolverineWorkflowBus : IWorkflowBus
 {
@@ -21,24 +22,24 @@ public class WolverineWorkflowBus : IWorkflowBus
     /// Send input to workflow, inferring workflow type from input's runtime type.
     /// Uses inheritance lookup - PlaceOrderInputMessage will match OrderProcessingInputMessage registration.
     /// </summary>
-    public async Task SendAsync<TInput>(string workflowId, TInput input, CancellationToken cancellationToken = default)
+    public async Task SendAsync<TInput>(TInput input, CancellationToken cancellationToken = default) where TInput : IWorkflowInput
     {
         // Use runtime type, not generic type parameter, to support inheritance
         var workflowType = _typeRegistry.GetWorkflowType(input!.GetType());
-        await SendAsync(workflowType, workflowId, input, cancellationToken);
+        await SendAsync(workflowType, input, cancellationToken);
     }
 
     /// <summary>
     /// Send input to workflow with explicit workflow type.
     /// </summary>
-    public async Task SendAsync<TInput>(string workflowType, string workflowId, TInput input, CancellationToken cancellationToken = default)
+    public async Task SendAsync<TInput>(string workflowType, TInput input, CancellationToken cancellationToken = default) where TInput : IWorkflowInput
     {
         var envelope = new WorkflowInputEnvelope
         {
-            WorkflowId = workflowId,
+            WorkflowId = input.WorkflowId,
             WorkflowType = workflowType,
             Input = input!,
-            CorrelationId = workflowId
+            CorrelationId = input.WorkflowId
         };
 
         await _messageBus.SendAsync(envelope);
